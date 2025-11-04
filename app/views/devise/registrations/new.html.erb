@@ -1,29 +1,347 @@
-<h2>Sign up</h2>
-
-<%= form_for(resource, as: resource_name, url: registration_path(resource_name)) do |f| %>
-  <%= render "devise/shared/error_messages", resource: resource %>
-
-  <div class="field">
-    <%= f.label :email %><br />
-    <%= f.email_field :email, autofocus: true, autocomplete: "email" %>
-  </div>
-
-  <div class="field">
-    <%= f.label :password %>
-    <% if @minimum_password_length %>
-    <em>(<%= @minimum_password_length %> characters minimum)</em>
-    <% end %><br />
-    <%= f.password_field :password, autocomplete: "new-password" %>
-  </div>
-
-  <div class="field">
-    <%= f.label :password_confirmation %><br />
-    <%= f.password_field :password_confirmation, autocomplete: "new-password" %>
-  </div>
-
-  <div class="actions">
-    <%= f.submit "Sign up" %>
-  </div>
+<%= content_for :head do %>
+  <style>
+    /* ---- reset ---- */
+    body{ margin:0; font:normal 75% Arial, Helvetica, sans-serif; }
+    canvas{ display: block; vertical-align: bottom; }
+    
+    /* ---- particles.js container ---- */
+    #particles-js{
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      background-color: #1d3b66;
+      background-image: url("");
+      background-repeat: no-repeat;
+      background-size: cover;
+      background-position: 50% 50%;
+      z-index: -1;
+    }
+  </style>
 <% end %>
 
-<%= render "devise/shared/links" %>
+<!-- particles.js container -->
+<div id="particles-js"></div>
+
+<!-- particles.js lib - https://github.com/VincentGarreau/particles.js -->
+<script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+<script>
+// Wait for scripts to load
+(function() {
+  function initParticles() {
+    if (typeof particlesJS === 'undefined') {
+      setTimeout(initParticles, 50);
+      return;
+    }
+    
+    particlesJS("particles-js", {
+      particles: {
+        number: { value: 80, density: { enable: true, value_area: 800 } },
+        color: { value: "#ffffff" },
+        shape: {
+          type: "circle",
+          stroke: { width: 0, color: "#000000" },
+          polygon: { nb_sides: 5 },
+          image: { src: "img/github.svg", width: 100, height: 100 }
+        },
+        opacity: {
+          value: 0.5,
+          random: false,
+          anim: { enable: false, speed: 1, opacity_min: 0.1, sync: false }
+        },
+        size: {
+          value: 3,
+          random: true,
+          anim: { enable: false, speed: 40, size_min: 0.1, sync: false }
+        },
+        line_linked: {
+          enable: true,
+          distance: 150,
+          color: "#ffffff",
+          opacity: 0.4,
+          width: 1
+        },
+        move: {
+          enable: true,
+          speed: 6,
+          direction: "none",
+          random: false,
+          straight: false,
+          out_mode: "out",
+          bounce: false,
+          attract: { enable: false, rotateX: 600, rotateY: 1200 }
+        }
+      },
+      interactivity: {
+        detect_on: "canvas",
+        events: {
+          onhover: { enable: true, mode: "grab" },
+          onclick: { enable: true, mode: "push" },
+          resize: true
+        },
+        modes: {
+          grab: { distance: 200, line_linked: { opacity: 0.5 } },
+          bubble: { distance: 400, size: 40, duration: 2, opacity: 8, speed: 3 },
+          repulse: { distance: 200, duration: 0.4 },
+          push: { particles_nb: 4 },
+          remove: { particles_nb: 2 }
+        }
+      },
+      retina_detect: true
+    });
+  }
+  
+  // Start initialization
+  initParticles();
+})();
+</script>
+
+<main class="auth-main">
+  <section class="auth-header">
+    <h1 class="auth-title-large">Smart Deal</h1>
+    <p class="auth-subtitle-large">Smart Contracts API Platform</p>
+  </section>
+
+  <section class="auth-form-section">
+    <h2 class="auth-form-title">Crear Cuenta</h2>
+
+    <%= form_for(resource, as: resource_name, url: registration_path(resource_name), html: { class: 'auth-form' }) do |f| %>
+      <%= render "devise/shared/error_messages", resource: resource %>
+
+      <div class="form-row">
+        <%= f.label :email, class: 'form-label' %>
+        <%= f.email_field :email, autofocus: true, autocomplete: "email", class: 'form-input' %>
+      </div>
+
+      <div class="form-password-group">
+        <div class="form-row">
+          <%= f.label :password, class: 'form-label' %>
+          <%= f.password_field :password, autocomplete: "new-password", class: 'form-input' %>
+        </div>
+        <% if @minimum_password_length %>
+          <div class="form-password-hint">
+            <em>(<%= @minimum_password_length %> caracteres mínimo)</em>
+          </div>
+        <% end %>
+      </div>
+
+      <div class="form-row">
+        <%= f.label :password_confirmation, "Confirmar", class: 'form-label' %>
+        <%= f.password_field :password_confirmation, autocomplete: "new-password", class: 'form-input' %>
+      </div>
+
+      <div class="form-submit-row">
+        <%= f.submit "Registrarse", class: 'btn btn-primary' %>
+      </div>
+    <% end %>
+
+    <div class="auth-links">
+      <%= render "devise/shared/links" %>
+    </div>
+  </section>
+</main>
+
+<style>
+  body {
+    position: relative;
+    min-height: 100vh;
+  }
+
+  .auth-main {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 2.5rem;
+    padding: 2rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .auth-header {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .auth-title-large {
+    font-weight: bold;
+    font-size: 2.5rem;
+    color: white;
+    margin: 1rem 0 0.5rem 0;
+    text-align: center;
+  }
+
+  .auth-subtitle-large {
+    text-align: center;
+    font-weight: 600;
+    color: white;
+    font-size: 1rem;
+  }
+
+  .auth-form-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .auth-form-title {
+    color: white;
+    font-weight: bold;
+    font-size: 1.5rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .auth-form {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .form-row {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    margin: 0.5rem 0;
+    width: 24rem;
+  }
+
+  .form-password-group {
+    display: flex;
+    flex-direction: column;
+    margin: 0.5rem 0;
+  }
+
+  .form-password-hint {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: flex-end;
+    margin-top: 0.25rem;
+  }
+
+  .form-password-hint em {
+    color: white;
+    font-weight: 600;
+    font-size: 0.875rem;
+    font-style: normal;
+  }
+
+  .form-label {
+    color: white;
+    font-weight: 600;
+    font-size: 0.875rem;
+    width: 6rem;
+    flex-shrink: 0;
+  }
+
+  .form-input {
+    font-size: 0.875rem;
+    font-weight: 500;
+    width: 100%;
+    padding: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.9);
+  }
+
+  .form-input:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.6);
+    background: white;
+  }
+
+  .form-submit-row {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+    justify-content: center;
+    margin: 1.25rem 0;
+  }
+
+  .btn {
+    padding: 0.75rem;
+    border-radius: 4px;
+    color: white;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+    transition: opacity 0.2s;
+  }
+
+  .btn:hover {
+    opacity: 0.9;
+  }
+
+  .btn-primary {
+    background-color: #166534; /* green-800 equivalent */
+  }
+
+  .btn-link {
+    background-color: #854d0e; /* yellow-800 equivalent */
+  }
+
+  .auth-links {
+    margin-top: 1rem;
+  }
+
+  .auth-links a {
+    display: inline-block;
+    margin: 0.25rem 0;
+  }
+
+  .field_with_errors .form-input {
+    border-color: #e53e3e;
+  }
+
+  #error_explanation {
+    background: rgba(254, 215, 215, 0.9);
+    color: #c53030;
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    backdrop-filter: blur(5px);
+    width: 24rem;
+  }
+
+  #error_explanation h2 {
+    font-size: 1rem;
+    margin: 0 0 0.5rem 0;
+  }
+
+  #error_explanation ul {
+    margin: 0;
+    padding-left: 1.5rem;
+  }
+
+  @media (max-width: 640px) {
+    .form-row {
+      width: 100%;
+      max-width: 24rem;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .form-label {
+      width: auto;
+    }
+
+    .form-input {
+      width: 100%;
+    }
+
+    .auth-title-large {
+      font-size: 2rem;
+    }
+
+    #error_explanation {
+      width: 100%;
+      max-width: 24rem;
+    }
+  }
+</style>
