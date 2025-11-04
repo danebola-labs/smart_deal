@@ -1,0 +1,7 @@
+// Wrapper to expose particlesJS globally
+import './particles.js';
+
+// The particles.js file already exposes particlesJS globally
+// This file just imports it to ensure it's loaded
+
+
