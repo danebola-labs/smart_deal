@@ -1,7 +1,7 @@
 # app/services/geia_client.rb
 
-# GEIA Client - Integración con el servicio interno de Globant
-# URL base: https://api.clients.geai.globant.com
+# GEIA Client - Integration with Globant internal service
+# Base URL: https://api.clients.geai.globant.com
 class GeiaClient
   def initialize
     @api_url = ENV.fetch("GEIA_API_URL", "https://api.clients.geai.globant.com")
@@ -11,8 +11,8 @@ class GeiaClient
   def query(prompt, **options)
     raise NotImplementedError, "GEIA integration not yet implemented. API key required." unless @api_key.present?
 
-    # Placeholder para futura implementación
-    # Aquí iría la lógica de conexión al API de GEIA
+    # Placeholder for future implementation
+    # Here would go the logic to connect to the GEIA API
     # require "net/http"
     # require "json"
     #

@@ -7,11 +7,11 @@ class BedrockClient
   def initialize(region: nil)
     region ||= ENV.fetch("AWS_REGION", "us-east-1")
     
-    # Obtener credenciales desde Rails credentials o variables de entorno
+    # Get credentials from Rails credentials or environment variables
     access_key_id = Rails.application.credentials.dig(:aws, :access_key_id) || ENV["AWS_ACCESS_KEY_ID"]
     secret_access_key = Rails.application.credentials.dig(:aws, :secret_access_key) || ENV["AWS_SECRET_ACCESS_KEY"]
     
-    # Si no hay credenciales, el SDK de AWS intentará usar el perfil por defecto
+    # If no credentials, AWS SDK will try to use the default profile
     client_options = { region: region }
     if access_key_id.present? && secret_access_key.present?
       client_options[:access_key_id] = access_key_id
@@ -43,7 +43,7 @@ class BedrockClient
     nil
   end
 
-  # Método de compatibilidad con AiProvider
+  # Compatibility method for AiProvider
   def query(prompt, **options)
     generate_text(prompt, **options)
   end

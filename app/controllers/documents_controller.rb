@@ -9,14 +9,14 @@ class DocumentsController < ApplicationController
       return
     end
 
-    # Validar que sea un PDF
+    # Validate that it's a PDF
     unless uploaded_file.content_type == 'application/pdf' || uploaded_file.original_filename&.downcase&.end_with?('.pdf')
       render turbo_stream: turbo_stream.update("document_info", partial: "documents/error", locals: { message: "File must be a PDF" })
       return
     end
 
     begin
-      # Extraer texto del PDF
+      # Extract text from PDF
       text = extract_text_from_pdf(uploaded_file)
       
       if text.strip.empty?
@@ -24,11 +24,11 @@ class DocumentsController < ApplicationController
         return
       end
       
-      # Procesar con IA (placeholder por ahora)
+      # Process with AI
       summary = analyze_text(text)
       
-      # Actualizar ambas secciones con Turbo Streams
-      # Usamos 'update' en lugar de 'replace' para preservar los turbo-frames
+      # Update both sections with Turbo Streams
+      # Use 'update' instead of 'replace' to preserve turbo-frames
       render turbo_stream: [
         turbo_stream.update("document_info", partial: "documents/info", locals: { 
           filename: uploaded_file.original_filename,
@@ -52,17 +52,17 @@ class DocumentsController < ApplicationController
   def extract_text_from_pdf(file)
     require 'pdf-reader'
     
-    # Crear un archivo temporal
+    # Create a temporary file
     temp_file = Tempfile.new(['document', '.pdf'])
     temp_file.binmode
     temp_file.write(file.read)
     temp_file.rewind
     
-    # Leer el PDF
+    # Read the PDF
     reader = PDF::Reader.new(temp_file.path)
     text = reader.pages.map(&:text).join(" ")
     
-    # Limpiar archivo temporal
+    # Clean up temporary file
     temp_file.close
     temp_file.unlink
     
@@ -72,36 +72,36 @@ class DocumentsController < ApplicationController
   end
 
   def analyze_text(text)
-    # Limitar el texto a un máximo de caracteres para evitar límites de tokens
+    # Limit text to maximum characters to avoid token limits
     max_chars = 100000
-    truncated_text = text.length > max_chars ? text[0..max_chars] + "\n\n[... documento truncado por longitud ...]" : text
+    truncated_text = text.length > max_chars ? text[0..max_chars] + "\n\n[... document truncated due to length ...]" : text
     
-    # Crear el prompt para el análisis del documento
-    prompt = "Eres un experto analista de documentos. Analiza y resume el documento de forma clara y concisa en español. Identifica los puntos principales, temas importantes y cualquier acción requerida.\n\nAnaliza este documento y proporciona un resumen detallado con los puntos principales:\n\n#{truncated_text}"
+    # Create the prompt for document analysis
+    prompt = "You are an expert document analyst. Analyze and summarize the document clearly and concisely in Spanish. Identify the main points, important topics, and any required actions.\n\nAnalyze this document and provide a detailed summary with the main points:\n\n#{truncated_text}"
     
     begin
-      # Usar AiProvider para obtener el resumen según el proveedor configurado
+      # Use AiProvider to get the summary according to the configured provider
       ai_provider = AiProvider.new
       summary = ai_provider.query(prompt, max_tokens: 2000, temperature: 0.7)
       
       if summary.present?
         summary
       else
-        "Error: No se pudo generar el resumen. Por favor, verifica la configuración de tu proveedor de IA."
+        "Error: Could not generate summary. Please verify your AI provider configuration."
       end
       
     rescue => e
-      Rails.logger.error "Error procesando con IA: #{e.message}"
+      Rails.logger.error "Error processing with AI: #{e.message}"
       Rails.logger.error e.backtrace.join("\n")
       
-      # Mensaje de error amigable según el tipo de error
+      # User-friendly error message based on error type
       case e.message
       when /Unknown AI provider/
-        "Error: Proveedor de IA no válido. Configura AI_PROVIDER con: bedrock, anthropic, geia o openai"
+        "Error: Invalid AI provider. Configure AI_PROVIDER with: bedrock, anthropic, geia or openai"
       when /not configured|not implemented/
-        "⚠️ #{e.message}. Por favor, configura las credenciales necesarias en Rails credentials."
+        "⚠️ #{e.message}. Please configure the required credentials in Rails credentials."
       else
-        "Error al procesar con la IA: #{e.message}. Por favor, verifica tu configuración."
+        "Error processing with AI: #{e.message}. Please verify your configuration."
       end
     end
   end
