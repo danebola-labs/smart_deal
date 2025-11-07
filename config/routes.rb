@@ -15,4 +15,7 @@ Rails.application.routes.draw do
 
   # Document processing
   post "documents/process", to: "documents#create"
+
+  # AI endpoint
+  post "/ai/ask", to: "ai#ask"
 end

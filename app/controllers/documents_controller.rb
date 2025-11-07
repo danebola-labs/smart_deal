@@ -72,30 +72,38 @@ class DocumentsController < ApplicationController
   end
 
   def analyze_text(text)
-    # Placeholder: Por ahora retornamos texto hardcodeado
-    # Cuando tengas la API key de OpenAI, descomenta el código de abajo
+    # Limitar el texto a un máximo de caracteres para evitar límites de tokens
+    max_chars = 100000
+    truncated_text = text.length > max_chars ? text[0..max_chars] + "\n\n[... documento truncado por longitud ...]" : text
     
-    # client = OpenAI::Client.new(api_key: ENV["OPENAI_API_KEY"])
-    # response = client.chat(
-    #   parameters: {
-    #     model: "gpt-4o-mini",
-    #     messages: [
-    #       { role: "system", content: "You are an expert document analyst. Summarize and explain this document clearly." },
-    #       { role: "user", content: "Analyze this document and summarize the main ideas:\n\n#{text}" }
-    #     ]
-    #   }
-    # )
-    # response.dig("choices", 0, "message", "content")
+    # Crear el prompt para el análisis del documento
+    prompt = "Eres un experto analista de documentos. Analiza y resume el documento de forma clara y concisa en español. Identifica los puntos principales, temas importantes y cualquier acción requerida.\n\nAnaliza este documento y proporciona un resumen detallado con los puntos principales:\n\n#{truncated_text}"
     
-    # Placeholder response
-    "This is a placeholder analysis of the document. The document contains #{text.length} characters. 
-    
-    Main points:
-    • Document successfully processed
-    • Ready to integrate with OpenAI API
-    • Text extraction working correctly
-    
-    Once you configure your OPENAI_API_KEY, the AI will provide a detailed analysis of the document content."
+    begin
+      # Usar AiProvider para obtener el resumen según el proveedor configurado
+      ai_provider = AiProvider.new
+      summary = ai_provider.query(prompt, max_tokens: 2000, temperature: 0.7)
+      
+      if summary.present?
+        summary
+      else
+        "Error: No se pudo generar el resumen. Por favor, verifica la configuración de tu proveedor de IA."
+      end
+      
+    rescue => e
+      Rails.logger.error "Error procesando con IA: #{e.message}"
+      Rails.logger.error e.backtrace.join("\n")
+      
+      # Mensaje de error amigable según el tipo de error
+      case e.message
+      when /Unknown AI provider/
+        "Error: Proveedor de IA no válido. Configura AI_PROVIDER con: bedrock, anthropic, geia o openai"
+      when /not configured|not implemented/
+        "⚠️ #{e.message}. Por favor, configura las credenciales necesarias en Rails credentials."
+      else
+        "Error al procesar con la IA: #{e.message}. Por favor, verifica tu configuración."
+      end
+    end
   end
 end
 
