@@ -1,112 +1,122 @@
 # Smart Deal
 
-Plataforma API para automatizar contratos (ventas, arrendamientos, servicios) con smart contracts integrados a pasarelas de pago y cumplimiento legal por país.
+API platform to automate contracts (sales, leases, services) with smart contracts integrated to payment gateways and legal compliance by country.
 
-## Características
+## Features
 
-- 🔐 Autenticación de usuarios con Devise
-- 📄 Procesamiento de documentos PDF
-- 🤖 Análisis de documentos con IA (AWS Bedrock, OpenAI, Anthropic, GEIA)
-- 🎨 Interfaz moderna con efectos de partículas
-- ⚡ Hotwire (Turbo + Stimulus) para interactividad
-- 🔄 Arquitectura flexible para cambiar entre proveedores de IA
+- 🔐 User authentication with Devise
+- 📄 PDF document processing
+- 🤖 AI document analysis (AWS Bedrock, OpenAI, Anthropic, GEIA)
+- 🎨 Modern interface with particle effects
+- ⚡ Hotwire (Turbo + Stimulus) for interactivity
+- 🔄 Flexible architecture to switch between AI providers
+- 💬 RAG chat with Knowledge Base integration
 
-## Configuración de la API de IA
+## AI API Configuration
 
-La aplicación soporta múltiples proveedores de IA que se pueden cambiar con una sola variable de entorno `AI_PROVIDER`.
+The application supports multiple AI providers that can be switched with a single environment variable `AI_PROVIDER`.
 
-### Proveedores Soportados
+### Supported Providers
 
-- **AWS Bedrock** (por defecto) - Claude 3.5 Haiku
+- **AWS Bedrock** (default) - Claude 3.5 Haiku for summaries, Claude 3 Sonnet for RAG
 - **OpenAI** - GPT-4o-mini, GPT-4o, etc.
-- **Anthropic** - Integración directa (próximamente)
-- **GEIA** - Servicio interno de Globant (próximamente)
+- **Anthropic** - Direct integration (coming soon)
+- **GEIA** - Internal Globant service (coming soon)
 
-### Configuración de AWS Bedrock (Recomendado)
+### AWS Bedrock Configuration (Recommended)
 
-#### Opción 1: Rails Credentials
+#### Option 1: Rails Credentials
 
-1. Ejecuta:
+1. Run:
    ```bash
    bin/rails credentials:edit
    ```
 
-2. Agrega:
+2. Add:
    ```yaml
    aws:
      access_key_id: YOUR_AWS_ACCESS_KEY_ID
      secret_access_key: YOUR_AWS_SECRET_ACCESS_KEY
      region: us-east-1
+   bedrock:
+     knowledge_base_id: YOUR_KNOWLEDGE_BASE_ID
+     model_id: anthropic.claude-3-sonnet-20240229-v1:0
    ```
 
-3. Guarda el archivo
+3. Save the file
 
-#### Opción 2: Variables de Entorno
+#### Option 2: Environment Variables
 
 ```bash
 export AWS_ACCESS_KEY_ID=your_access_key
 export AWS_SECRET_ACCESS_KEY=your_secret_key
 export AWS_REGION=us-east-1
+export BEDROCK_KNOWLEDGE_BASE_ID=your_knowledge_base_id
 export AI_PROVIDER=bedrock
 ```
 
-### Configuración de OpenAI
+### OpenAI Configuration
 
-1. En Rails credentials:
+1. In Rails credentials:
    ```yaml
    openai:
      api_key: your-openai-api-key
    ```
 
-2. O variable de entorno:
+2. Or environment variable:
    ```bash
    export OPENAI_API_KEY=your-api-key
    export AI_PROVIDER=openai
    ```
 
-### Cambiar el Proveedor
+### Changing the Provider
 
-Solo necesitas cambiar la variable de entorno `AI_PROVIDER`:
+You only need to change the `AI_PROVIDER` environment variable:
 
 ```bash
-export AI_PROVIDER=bedrock    # AWS Bedrock (por defecto)
+export AI_PROVIDER=bedrock    # AWS Bedrock (default)
 export AI_PROVIDER=openai     # OpenAI
-export AI_PROVIDER=anthropic  # Anthropic (próximamente)
-export AI_PROVIDER=geia       # GEIA (próximamente)
+export AI_PROVIDER=anthropic  # Anthropic (coming soon)
+export AI_PROVIDER=geia       # GEIA (coming soon)
 ```
 
-**Ver documentación detallada**: [BEDROCK_SETUP.md](BEDROCK_SETUP.md)
+**See detailed documentation**: [BEDROCK_SETUP.md](BEDROCK_SETUP.md)
 
-## Instalación
+## Installation
 
-1. Instala las dependencias:
+1. Install dependencies:
    ```bash
    bundle install
    ```
 
-2. Configura la base de datos:
+2. Set up the database:
    ```bash
    rails db:create
    rails db:migrate
    ```
 
-3. Configura la API key de IA (ver sección anterior)
+3. Configure the AI API key (see previous section)
 
-4. Inicia el servidor:
+4. Start the server:
    ```bash
    bin/dev
    ```
 
-5. Abre tu navegador en `http://localhost:3000`
+5. Open your browser at `http://localhost:3000`
 
-## Uso
+## Usage
 
-1. Registra un nuevo usuario o inicia sesión
-2. Sube un documento PDF
-3. La IA analizará el documento y generará un resumen automáticamente
+1. Register a new user or sign in
+2. Upload a PDF document
+3. The AI will analyze the document and automatically generate a summary
+4. Use the RAG chat to ask questions about documents indexed in the Knowledge Base
 
-## Desarrollo
+## Development
 
-- Ruby version: Ver `.ruby-version`
+- Ruby version: See `.ruby-version`
 - Rails version: 8.1.1
-- Database: SQLite3 (desarrollo)
+- Database: SQLite3 (development)
+
+## Architecture
+
+For detailed information about the application architecture, design decisions, and patterns used, see [ARCHITECTURE.md](ARCHITECTURE.md).
