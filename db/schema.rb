@@ -10,7 +10,18 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2025_11_04_004138) do
+ActiveRecord::Schema[8.1].define(version: 2025_12_03_230920) do
+  create_table "cost_metrics", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.date "date", null: false
+    t.text "metadata", default: "{}"
+    t.integer "metric_type", null: false
+    t.datetime "updated_at", null: false
+    t.decimal "value", precision: 12, scale: 6, null: false
+    t.index ["date", "metric_type"], name: "index_cost_metrics_on_date_and_metric_type", unique: true
+    t.index ["date"], name: "index_cost_metrics_on_date"
+  end
+
   create_table "users", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "email", default: "", null: false

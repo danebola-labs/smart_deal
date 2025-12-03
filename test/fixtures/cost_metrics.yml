@@ -1,0 +1,3 @@
+# Fixtures disabled for this model
+# Tests create their own specific data to avoid conflicts
+# and make tests more explicit and controllable
