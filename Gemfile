@@ -48,6 +48,10 @@ gem "aws-sdk-bedrockruntime"
 gem "aws-sdk-bedrock"
 gem "aws-sdk-bedrockagentruntime"
 
+# AWS services for metrics
+gem "aws-sdk-cloudwatch"
+gem "aws-sdk-s3"
+
 group :development, :test do
   # Environment variables management
   gem "dotenv-rails"
