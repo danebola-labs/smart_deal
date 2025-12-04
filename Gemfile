@@ -51,6 +51,7 @@ gem "aws-sdk-bedrockagentruntime"
 # AWS services for metrics
 gem "aws-sdk-cloudwatch"
 gem "aws-sdk-s3"
+gem "aws-sdk-rds"
 
 group :development, :test do
   # Environment variables management
