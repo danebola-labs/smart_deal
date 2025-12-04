@@ -29,9 +29,10 @@ class BedrockRagService
     @knowledge_base_id = Rails.application.credentials.dig(:bedrock, :knowledge_base_id) ||
                          ENV["BEDROCK_KNOWLEDGE_BASE_ID"]
     
-    # Use Claude 3 Sonnet with foundation-model ARN (works reliably with Knowledge Base)
-    # Alternative: Can use Claude 3 Opus or other models that support foundation-model ARN
-    default_model_id = ENV.fetch("BEDROCK_MODEL_ID", "anthropic.claude-3-sonnet-20240229-v1:0")
+    # Use Claude 3 Haiku by default for cost optimization (12x cheaper than Sonnet)
+    # Alternative: Can use Claude 3 Sonnet, Opus, or other models that support foundation-model ARN
+    # Set BEDROCK_MODEL_ID env var or configure in Rails credentials to override
+    default_model_id = ENV.fetch("BEDROCK_MODEL_ID", "anthropic.claude-3-haiku-20240307-v1:0")
     model_id = Rails.application.credentials.dig(:bedrock, :model_id) || default_model_id
     
     # Remove 'us.' prefix if present (not needed for foundation-model ARN)
@@ -77,19 +78,23 @@ class BedrockRagService
 
     Rails.logger.info("Knowledge Base response received successfully")
     
-    # Extract model ID from ARN (e.g., "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0" -> "anthropic.claude-3-sonnet-20240229-v1:0")
+    # Extract model ID from ARN (e.g., "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-haiku-20240307-v1:0" -> "anthropic.claude-3-haiku-20240307-v1:0")
     model_id = model_arn.split("/").last
     
-    # Extract tokens from response if available, otherwise estimate
-    input_tokens = estimate_tokens(question)
-    output_text = response.output&.text || ""
-    output_tokens = estimate_tokens(output_text)
+    # Extract tokens from response - prioritize actual usage data from response
+    input_tokens = nil
+    output_tokens = nil
     
     # Try to get actual token usage from response if available
     if response.respond_to?(:usage) && response.usage
-      input_tokens = response.usage.input_tokens if response.usage.respond_to?(:input_tokens)
-      output_tokens = response.usage.output_tokens if response.usage.respond_to?(:output_tokens)
+      input_tokens = response.usage.input_tokens if response.usage.respond_to?(:input_tokens) && response.usage.input_tokens
+      output_tokens = response.usage.output_tokens if response.usage.respond_to?(:output_tokens) && response.usage.output_tokens
     end
+    
+    # Fallback to estimation if usage data not available
+    input_tokens ||= estimate_tokens(question)
+    output_text = response.output&.text || ""
+    output_tokens ||= estimate_tokens(output_text)
     
     # Save query to database for metrics tracking
     begin
