@@ -453,5 +453,196 @@ namespace :debug do
     puts "\n✅ Debug complete!"
     puts "=" * 50
   end
+
+  desc "Debug S3 bucket contents in detail"
+  task s3_detailed: :environment do
+    require "aws-sdk-s3"
+    require "aws-sdk-core/static_token_provider"
+    
+    bucket_name = 'document-chatbot-generic-tech-info'
+    puts "🔍 Detailed S3 analysis for: #{bucket_name}"
+    puts "=" * 50
+    
+    # Use same AWS configuration pattern
+    region = Rails.application.credentials.dig(:aws, :region) || 
+             ENV.fetch("AWS_REGION", "us-east-1")
+    
+    access_key_id = Rails.application.credentials.dig(:aws, :access_key_id) || ENV["AWS_ACCESS_KEY_ID"]
+    secret_access_key = Rails.application.credentials.dig(:aws, :secret_access_key) || ENV["AWS_SECRET_ACCESS_KEY"]
+    bearer_token = Rails.application.credentials.dig(:aws, :bedrock_bearer_token) ||
+                   Rails.application.credentials.dig(:aws, :bedrock_api_key) ||
+                   ENV["AWS_BEARER_TOKEN_BEDROCK"] ||
+                   ENV["AWS_BEDROCK_BEARER_TOKEN"]
+    
+    client_options = { region: region }
+    if bearer_token.present?
+      client_options[:token_provider] = Aws::StaticTokenProvider.new(bearer_token)
+    elsif access_key_id.present? && secret_access_key.present?
+      client_options[:access_key_id] = access_key_id
+      client_options[:secret_access_key] = secret_access_key
+    end
+    
+    begin
+      s3 = Aws::S3::Client.new(client_options)
+      
+      all_objects = []
+      s3.list_objects_v2(bucket: bucket_name).each do |response|
+        all_objects.concat(response.contents || [])
+      end
+      
+      puts "📊 Total objects found: #{all_objects.count}"
+      puts "\n📋 Complete object list:"
+      
+      all_objects.each_with_index do |obj, index|
+        size_mb = (obj.size / 1024.0 / 1024.0).round(3)
+        modified = obj.last_modified ? obj.last_modified.strftime("%Y-%m-%d %H:%M:%S") : "N/A"
+        storage_class = obj.storage_class || "STANDARD"
+        puts "#{index + 1}. #{obj.key}"
+        puts "   Size: #{size_mb} MB (#{number_to_human_size(obj.size)})"
+        puts "   Modified: #{modified}"
+        puts "   Storage Class: #{storage_class}"
+        puts ""
+      end
+      
+      # Filter only real documents (exclude metadata)
+      document_objects = all_objects.select do |obj|
+        # Exclude:
+        # - Hidden files (starting with .)
+        # - System metadata ($folder$)
+        # - Directories (ending with /)
+        # - Empty files
+        !obj.key.start_with?('.') && 
+        !obj.key.include?('$folder$') &&
+        !obj.key.end_with?('/') &&
+        obj.size > 0
+      end
+      
+      puts "📄 Real documents (excluding metadata): #{document_objects.count}"
+      document_objects.each do |obj|
+        size_mb = (obj.size / 1024.0 / 1024.0).round(2)
+        puts "   - #{obj.key} (#{size_mb} MB)"
+      end
+      
+      puts "\n💡 Recommendation:"
+      puts "   Use filtered count (#{document_objects.count}) for accurate document metrics"
+      
+    rescue => e
+      puts "❌ Error: #{e.message}"
+      puts e.backtrace.first(5).join("\n")
+    end
+    
+    puts "=" * 50
+  end
+
+  desc "Debug Aurora cluster status"
+  task aurora: :environment do
+    require "aws-sdk-rds"
+    require "aws-sdk-cloudwatch"
+    require "aws-sdk-core/static_token_provider"
+    
+    cluster_id = 'knowledgebasequickcreateaurora-407-auroradbcluster-bb0lvonokgdy'
+    puts "🔍 Aurora cluster analysis: #{cluster_id}"
+    puts "=" * 50
+    
+    # Use same AWS configuration pattern
+    region = Rails.application.credentials.dig(:aws, :region) || 
+             ENV.fetch("AWS_REGION", "us-east-1")
+    
+    access_key_id = Rails.application.credentials.dig(:aws, :access_key_id) || ENV["AWS_ACCESS_KEY_ID"]
+    secret_access_key = Rails.application.credentials.dig(:aws, :secret_access_key) || ENV["AWS_SECRET_ACCESS_KEY"]
+    bearer_token = Rails.application.credentials.dig(:aws, :bedrock_bearer_token) ||
+                   Rails.application.credentials.dig(:aws, :bedrock_api_key) ||
+                   ENV["AWS_BEARER_TOKEN_BEDROCK"] ||
+                   ENV["AWS_BEDROCK_BEARER_TOKEN"]
+    
+    client_options = { region: region }
+    if bearer_token.present?
+      client_options[:token_provider] = Aws::StaticTokenProvider.new(bearer_token)
+    elsif access_key_id.present? && secret_access_key.present?
+      client_options[:access_key_id] = access_key_id
+      client_options[:secret_access_key] = secret_access_key
+    end
+    
+    begin
+      # 1. Check cluster status
+      rds = Aws::RDS::Client.new(client_options)
+      cluster = rds.describe_db_clusters({
+        db_cluster_identifier: cluster_id
+      }).db_clusters.first
+      
+      puts "🏥 Cluster Status:"
+      puts "   Status: #{cluster.status}"
+      puts "   Engine: #{cluster.engine} #{cluster.engine_version}"
+      puts "   Engine Mode: #{cluster.engine_mode}"
+      puts "   Multi-AZ: #{cluster.multi_az}"
+      puts "   Current Capacity: #{cluster.capacity || 'N/A'}"
+      
+      if cluster.respond_to?(:scaling_configuration) && cluster.scaling_configuration
+        scaling = cluster.scaling_configuration
+        puts "   Min Capacity: #{scaling.min_capacity || 'N/A'}"
+        puts "   Max Capacity: #{scaling.max_capacity || 'N/A'}"
+        puts "   Auto Pause: #{scaling.auto_pause || 'N/A'}"
+        puts "   Seconds Until Auto Pause: #{scaling.seconds_until_auto_pause || 'N/A'}"
+      end
+      
+      # 2. Check CloudWatch metrics
+      puts "\n📊 CloudWatch Metrics (last 24h):"
+      cloudwatch = Aws::CloudWatch::Client.new(client_options)
+      
+      metrics_to_check = [
+        'ServerlessDatabaseCapacity',
+        'DatabaseConnections', 
+        'CPUUtilization',
+        'VolumeBytesUsed'
+      ]
+      
+      metrics_to_check.each do |metric_name|
+        begin
+          response = cloudwatch.get_metric_statistics({
+            namespace: 'AWS/RDS',
+            metric_name: metric_name,
+            dimensions: [
+              { name: 'DBClusterIdentifier', value: cluster_id }
+            ],
+            start_time: 24.hours.ago.utc,
+            end_time: Time.current.utc,
+            period: 3600,
+            statistics: ['Average', 'Maximum']
+          })
+          
+          if response.datapoints.any?
+            latest = response.datapoints.last
+            avg = latest.average ? latest.average.round(2) : 'N/A'
+            max = latest.maximum ? latest.maximum.round(2) : 'N/A'
+            puts "   #{metric_name}: avg=#{avg}, max=#{max}"
+          else
+            puts "   #{metric_name}: No data (cluster likely paused)"
+          end
+          
+        rescue => e
+          puts "   #{metric_name}: Error - #{e.message}"
+        end
+      end
+      
+      # 3. Check if there's recent activity
+      puts "\n🔍 Recent Activity Check:"
+      if cluster.status == 'available' && cluster.capacity && cluster.capacity > 0
+        puts "   ✅ Cluster is ACTIVE with #{cluster.capacity} ACUs"
+      elsif cluster.status == 'available' && (!cluster.capacity || cluster.capacity == 0)
+        puts "   😴 Cluster is PAUSED (available but 0 capacity)"
+        puts "   💡 This is normal for Aurora Serverless when inactive"
+      else
+        puts "   ⚠️  Cluster status: #{cluster.status}"
+      end
+      
+    rescue Aws::RDS::Errors::DBClusterNotFoundFault
+      puts "❌ Aurora cluster not found: #{cluster_id}"
+    rescue => e
+      puts "❌ Error: #{e.message}"
+      puts e.backtrace.first(5).join("\n")
+    end
+    
+    puts "=" * 50
+  end
 end
 

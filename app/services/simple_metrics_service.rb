@@ -89,15 +89,29 @@ class SimpleMetricsService
     def get_aurora_acu_average
       cluster_id = @aurora_cluster_identifier || 
                    Rails.application.credentials.dig(:aws, :aurora_db_cluster_identifier) ||
-                   ENV["AURORA_DB_CLUSTER_IDENTIFIER"]
+                   ENV["AURORA_DB_CLUSTER_IDENTIFIER"] ||
+                   'knowledgebasequickcreateaurora-407-auroradbcluster-bb0lvonokgdy'
       
       return 0.0 unless cluster_id.present?
 
       Rails.logger.info("🔍 Checking Aurora cluster: #{cluster_id}")
 
       begin
-        # Aurora Serverless v2 uses ServerlessDatabaseCapacity metric
-        # For Aurora Serverless v1, use ACUUtilization
+        # 1. First check current cluster status
+        cluster = @rds.describe_db_clusters(
+          db_cluster_identifier: cluster_id
+        ).db_clusters.first
+
+        Rails.logger.info("🏥 Aurora Status: #{cluster.status}")
+        Rails.logger.info("🏥 Current Capacity: #{cluster.capacity || 'paused'}")
+
+        # 2. If cluster is paused or inactive, return 0
+        if cluster.status != 'available' || !cluster.capacity || cluster.capacity == 0
+          Rails.logger.info("😴 Aurora is paused or inactive (normal for Serverless when idle)")
+          return 0.0
+        end
+
+        # 3. If cluster is active, get CloudWatch metrics
         resp = @cloudwatch.get_metric_statistics(
           namespace: "AWS/RDS",
           metric_name: "ServerlessDatabaseCapacity",
@@ -107,62 +121,49 @@ class SimpleMetricsService
           start_time: @date.beginning_of_day.utc,
           end_time: @date.end_of_day.utc,
           period: 3600, # 1 hour periods
-          statistics: ["Average", "Maximum"]
+          statistics: ["Average"]
         )
 
         Rails.logger.info("📊 Aurora datapoints: #{resp.datapoints.count}")
 
-        if resp.datapoints.empty?
-          Rails.logger.warn("⚠️  No Aurora datapoints - cluster might be paused, checking status directly...")
-          return check_aurora_status(cluster_id)
+        if resp.datapoints.any?
+          # Calculate average of all datapoints for the day
+          averages = resp.datapoints.map(&:average).compact
+          if averages.any?
+            avg_acu = averages.sum / averages.count
+            Rails.logger.info("✅ Aurora ACU average: #{avg_acu.round(2)}")
+            return avg_acu.round(2)
+          end
         end
 
-        # Calculate average of all datapoints for the day
-        averages = resp.datapoints.map(&:average).compact
-        if averages.empty?
-          Rails.logger.warn("⚠️  No valid averages in Aurora datapoints")
-          return check_aurora_status(cluster_id)
+        # 4. If no CloudWatch data but cluster is active, use current capacity
+        if cluster.capacity && cluster.capacity > 0
+          Rails.logger.info("📊 No CloudWatch data for #{@date}, using current capacity: #{cluster.capacity}")
+          return cluster.capacity.to_f
         end
 
-        avg_acu = averages.sum / averages.count
-        Rails.logger.info("✅ Aurora ACU average: #{avg_acu.round(2)}")
-        avg_acu.round(2)
+        # 5. Fallback: return 0 if no data available
+        Rails.logger.warn("⚠️  No Aurora metrics available")
+        0.0
+
+      rescue Aws::RDS::Errors::DBClusterNotFoundFault => e
+        Rails.logger.error("❌ Aurora cluster not found: #{cluster_id}")
+        0.0
       rescue Aws::CloudWatch::Errors::ServiceError => e
         Rails.logger.error("❌ Aurora CloudWatch error: #{e.message}")
-        Rails.logger.error(e.backtrace.first(5).join("\n"))
-        # Try to get cluster status directly as fallback
-        check_aurora_status(cluster_id)
+        # Try to use current capacity as fallback
+        begin
+          cluster = @rds.describe_db_clusters(db_cluster_identifier: cluster_id).db_clusters.first
+          if cluster.status == 'available' && cluster.capacity && cluster.capacity > 0
+            Rails.logger.info("📊 Using current capacity as fallback: #{cluster.capacity}")
+            return cluster.capacity.to_f
+          end
+        rescue
+          # Ignore fallback errors
+        end
+        0.0
       rescue => e
         Rails.logger.error("Error fetching Aurora ACU metrics: #{e.message}")
-        Rails.logger.error(e.backtrace.first(5).join("\n"))
-        0.0
-      end
-    end
-
-    def check_aurora_status(cluster_id)
-      begin
-        cluster = @rds.describe_db_clusters(
-          db_cluster_identifier: cluster_id
-        ).db_clusters.first
-
-        Rails.logger.info("🏥 Aurora Status: #{cluster.status}")
-        Rails.logger.info("🏥 Aurora Engine Mode: #{cluster.engine_mode}")
-        Rails.logger.info("🏥 Aurora Capacity: #{cluster.capacity}") if cluster.respond_to?(:capacity) && cluster.capacity
-
-        # If cluster is available but paused, return 0
-        # If available and has capacity, return capacity
-        if cluster.status == 'available'
-          capacity = cluster.respond_to?(:capacity) ? cluster.capacity : nil
-          return capacity || 0.5 # Default to 0.5 ACU if available but no capacity info
-        else
-          Rails.logger.warn("⚠️  Aurora cluster status: #{cluster.status} - returning 0.0")
-          return 0.0
-        end
-      rescue Aws::RDS::Errors::ServiceError => e
-        Rails.logger.error("❌ Aurora RDS error: #{e.message}")
-        0.0
-      rescue => e
-        Rails.logger.error("Error checking Aurora status: #{e.message}")
         Rails.logger.error(e.backtrace.first(5).join("\n"))
         0.0
       end
@@ -179,15 +180,35 @@ class SimpleMetricsService
       Rails.logger.info("📁 Checking S3 bucket: #{bucket_name}")
 
       begin
-        # Use paginator to count all objects efficiently
-        total_count = 0
-        
+        # Collect all objects
+        all_objects = []
         @s3.list_objects_v2(bucket: bucket_name).each do |response|
-          total_count += response.contents&.count || 0
+          all_objects.concat(response.contents || [])
         end
         
-        Rails.logger.info("📄 Found #{total_count} objects in S3")
-        total_count
+        # Filter only real documents (exclude metadata, hidden files, directories)
+        real_documents = all_objects.select do |obj|
+          # Exclude:
+          # - Hidden files (starting with .)
+          # - System metadata ($folder$)
+          # - Directories (ending with /)
+          # - Files smaller than 1KB (likely metadata)
+          !obj.key.start_with?('.') && 
+          !obj.key.include?('$folder$') &&
+          !obj.key.end_with?('/') &&
+          obj.size > 1024 # At least 1KB
+        end
+        
+        Rails.logger.info("📄 Found #{all_objects.count} total objects, #{real_documents.count} real documents")
+        
+        if Rails.env.development? && real_documents.any?
+          Rails.logger.info("   Real documents:")
+          real_documents.each do |obj|
+            Rails.logger.info("     - #{obj.key} (#{number_to_human_size(obj.size)})")
+          end
+        end
+        
+        real_documents.count
       rescue Aws::S3::Errors::NoSuchBucket => e
         Rails.logger.error("❌ Bucket '#{bucket_name}' does not exist: #{e.message}")
         0
