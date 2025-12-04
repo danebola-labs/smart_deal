@@ -1,8 +1,41 @@
+require "aws-sdk-cloudwatch"
+require "aws-sdk-s3"
+require "aws-sdk-core/static_token_provider"
+
 class SimpleMetricsService
     def initialize(date = Date.current)
       @date = date
-      @cloudwatch = Aws::CloudWatch::Client.new(region: "us-east-1")
-      @s3 = Aws::S3::Client.new(region: "us-east-1")
+      
+      # Use same AWS configuration pattern as BedrockClient and BedrockRagService
+      region = Rails.application.credentials.dig(:aws, :region) || 
+               ENV.fetch("AWS_REGION", "us-east-1")
+      
+      # Get credentials from Rails credentials or environment variables
+      access_key_id = Rails.application.credentials.dig(:aws, :access_key_id) || ENV["AWS_ACCESS_KEY_ID"]
+      secret_access_key = Rails.application.credentials.dig(:aws, :secret_access_key) || ENV["AWS_SECRET_ACCESS_KEY"]
+      bearer_token = Rails.application.credentials.dig(:aws, :bedrock_bearer_token) ||
+                     Rails.application.credentials.dig(:aws, :bedrock_api_key) ||
+                     ENV["AWS_BEARER_TOKEN_BEDROCK"] ||
+                     ENV["AWS_BEDROCK_BEARER_TOKEN"]
+      
+      # Build client options following the same pattern
+      client_options = { region: region }
+      if bearer_token.present?
+        client_options[:token_provider] = Aws::StaticTokenProvider.new(bearer_token)
+      elsif access_key_id.present? && secret_access_key.present?
+        client_options[:access_key_id] = access_key_id
+        client_options[:secret_access_key] = secret_access_key
+      end
+      
+      @cloudwatch = Aws::CloudWatch::Client.new(client_options)
+      @s3 = Aws::S3::Client.new(client_options)
+      
+      # Get configuration from Rails credentials or environment variables (same pattern as BedrockRagService)
+      @knowledge_base_bucket = Rails.application.credentials.dig(:bedrock, :knowledge_base_s3_bucket) ||
+                               Rails.application.credentials.dig(:aws, :knowledge_base_s3_bucket) ||
+                               ENV["KNOWLEDGE_BASE_S3_BUCKET"]
+      @aurora_cluster_identifier = Rails.application.credentials.dig(:aws, :aurora_db_cluster_identifier) ||
+                                   ENV["AURORA_DB_CLUSTER_IDENTIFIER"]
     end
   
     def save_daily_metrics
@@ -52,12 +85,14 @@ class SimpleMetricsService
     #
   
     def get_aurora_acu_average
+      return 0 unless @aurora_cluster_identifier.present?
+
       begin
         resp = @cloudwatch.get_metric_statistics(
           namespace: "AWS/RDS",
           metric_name: "ServerlessDatabaseCapacity",
           dimensions: [
-            { name: "DBClusterIdentifier", value: "knowledgebasequickcreateaurora-407-auroradbcluster-bb0lvonokgdy" }
+            { name: "DBClusterIdentifier", value: @aurora_cluster_identifier }
           ],
           start_time: @date.beginning_of_day,
           end_time: @date.end_of_day,
@@ -80,10 +115,10 @@ class SimpleMetricsService
     #
   
     def get_s3_document_count
-      bucket = ENV["KNOWLEDGE_BASE_S3_BUCKET"] || "your-kb-bucket"
-  
+      return 0 unless @knowledge_base_bucket.present?
+
       begin
-        resp = @s3.list_objects_v2(bucket: bucket)
+        resp = @s3.list_objects_v2(bucket: @knowledge_base_bucket)
         resp.contents.count
       rescue
         0
@@ -91,10 +126,10 @@ class SimpleMetricsService
     end
   
     def get_s3_total_size
-      bucket = ENV["KNOWLEDGE_BASE_S3_BUCKET"] || "your-kb-bucket"
-  
+      return 0 unless @knowledge_base_bucket.present?
+
       begin
-        resp = @s3.list_objects_v2(bucket: bucket)
+        resp = @s3.list_objects_v2(bucket: @knowledge_base_bucket)
         resp.contents.sum(&:size)
       rescue
         0

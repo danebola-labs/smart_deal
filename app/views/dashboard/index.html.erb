@@ -1,2 +1,129 @@
-<h1>Dashboard#index</h1>
-<p>Find me in app/views/dashboard/index.html.erb</p>
+<div class="min-h-screen bg-gray-100 py-8">
+    <div class="max-w-7xl mx-auto px-4">
+  
+      <!-- HEADER -->
+      <div class="mb-8">
+        <h1 class="text-3xl font-extrabold text-gray-900">Cost Dashboard</h1>
+        <p class="text-gray-600 text-sm">Usage monitoring for your Knowledge Base</p>
+      </div>
+  
+      <!-- DAILY METRICS CARDS -->
+      <!-- Each card uses a shared partial -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+  
+        <%= render partial: "metric_card", locals: {
+          title: "Tokens Today",
+          value: number_with_delimiter(@current_metrics[:today_tokens]),
+          color: "text-blue-600"
+        } %>
+  
+        <%= render partial: "metric_card", locals: {
+          title: "Cost Today",
+          value: "$#{@current_metrics[:today_cost].round(4)}",
+          color: "text-red-600"
+        } %>
+  
+        <%= render partial: "metric_card", locals: {
+          title: "Queries Today",
+          value: @current_metrics[:today_queries],
+          color: "text-green-600"
+        } %>
+  
+        <%= render partial: "metric_card", locals: {
+          title: "Aurora ACU",
+          value: @current_metrics[:aurora_acu].round(2),
+          color: "text-purple-600"
+        } %>
+  
+        <%= render partial: "metric_card", locals: {
+          title: "S3 Documents",
+          value: @current_metrics[:s3_documents],
+          color: "text-yellow-600"
+        } %>
+  
+        <%= render partial: "metric_card", locals: {
+          title: "S3 Size",
+          value: "#{@current_metrics[:s3_size_gb].round(1)} GB",
+          color: "text-indigo-600"
+        } %>
+  
+      </div>
+  
+      <!-- MONTHLY TOTALS PANEL + CHART -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+  
+        <!-- Monthly totals summary -->
+        <div class="bg-white p-6 rounded-xl shadow">
+          <h3 class="text-lg font-semibold text-gray-800 mb-3">Monthly Summary</h3>
+  
+          <div class="space-y-2 text-sm">
+            <div class="flex justify-between">
+              <span class="text-gray-600">Tokens:</span>
+              <span class="font-bold"><%= number_with_delimiter(@monthly_totals[:total_tokens]) %></span>
+            </div>
+  
+            <div class="flex justify-between">
+              <span class="text-gray-600">Cost:</span>
+              <span class="font-bold text-red-600">$<%= @monthly_totals[:total_cost].round(2) %></span>
+            </div>
+  
+            <div class="flex justify-between">
+              <span class="text-gray-600">Queries:</span>
+              <span class="font-bold"><%= @monthly_totals[:total_queries] %></span>
+            </div>
+  
+            <div class="flex justify-between">
+              <span class="text-gray-600">Average ACU:</span>
+              <span class="font-bold"><%= @monthly_totals[:avg_acu] %></span>
+            </div>
+          </div>
+        </div>
+  
+        <!-- 30-day cost chart -->
+        <div class="md:col-span-3 bg-white p-6 rounded-xl shadow">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4">Cost Last 30 Days</h3>
+          <canvas id="costsChart" height="120"></canvas>
+        </div>
+      </div>
+  
+      <!-- MODEL USAGE SECTION (if any Bedrock queries exist) -->
+      <% if BedrockQuery.exists? %>
+        <div class="bg-white p-6 rounded-xl shadow mb-8">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4">Model Usage (Last 24h)</h3>
+  
+          <!-- Cards per model -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <% BedrockQuery.where(created_at: 24.hours.ago..Time.current)
+                            .group(:model_id)
+                            .sum('input_tokens + output_tokens')
+                            .each do |model, tokens| %>
+  
+              <div class="p-4 bg-gray-50 rounded-lg text-center">
+                <p class="text-sm text-gray-500">
+                  <%= model.include?("haiku") ? "Claude Haiku" : "Claude Sonnet" %>
+                </p>
+                <p class="text-xl font-bold text-gray-900">
+                  <%= number_with_delimiter(tokens) %>
+                </p>
+                <p class="text-xs text-gray-400">tokens</p>
+              </div>
+  
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+  
+      <!-- REFRESH BUTTON (pull metrics from AWS) -->
+      <div class="text-center mt-10">
+        <%= button_to "Refresh Metrics",
+            dashboard_refresh_path,
+            method: :post,
+            class: "bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow",
+            data: { disable_with: "Refreshing..." } %>
+      </div>
+  
+    </div>
+  </div>
+  
+  <!-- CHART.JS LOADER
+  
