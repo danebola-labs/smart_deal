@@ -29,23 +29,40 @@
           color: "text-green-600"
         } %>
   
-        <%= render partial: "metric_card", locals: {
-          title: "Aurora ACU",
-          value: @current_metrics[:aurora_acu].round(2),
-          color: "text-purple-600"
-        } %>
-  
-        <%= render partial: "metric_card", locals: {
-          title: "S3 Documents",
-          value: @current_metrics[:s3_documents],
-          color: "text-yellow-600"
-        } %>
-  
-        <%= render partial: "metric_card", locals: {
-          title: "S3 Size",
-          value: "#{@current_metrics[:s3_size_gb].round(1)} GB",
-          color: "text-indigo-600"
-        } %>
+        <!-- Aurora ACU with explanation -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <div class="text-sm text-gray-500">Aurora ACU</div>
+          <div class="text-2xl font-bold text-purple-600">
+            <%= @current_metrics[:aurora_acu].round(1) %>
+          </div>
+          <% if @current_metrics[:aurora_acu] == 0.0 %>
+            <div class="text-xs text-gray-400 mt-1">
+              💤 Pausado (normal)
+            </div>
+          <% end %>
+        </div>
+
+        <!-- S3 Documents with size -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <div class="text-sm text-gray-500">Documentos S3</div>
+          <div class="text-2xl font-bold text-yellow-600">
+            <%= @current_metrics[:s3_documents].to_i %>
+          </div>
+          <div class="text-xs text-gray-400 mt-1">
+            📄 <%= @current_metrics[:s3_size_mb] %> MB
+          </div>
+        </div>
+
+        <!-- S3 Total Size -->
+        <div class="bg-white p-4 rounded-lg shadow">
+          <div class="text-sm text-gray-500">S3 Total Size</div>
+          <div class="text-2xl font-bold text-indigo-600">
+            <%= @current_metrics[:s3_size_mb] %> MB
+          </div>
+          <div class="text-xs text-gray-400 mt-1">
+            <%= @current_metrics[:s3_size_gb].round(2) %> GB
+          </div>
+        </div>
   
       </div>
   
@@ -90,14 +107,14 @@
       <% if BedrockQuery.exists? %>
         <div class="bg-white p-6 rounded-xl shadow mb-8">
           <h3 class="text-lg font-semibold text-gray-800 mb-4">Model Usage (Last 24h)</h3>
-  
+
           <!-- Cards per model -->
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <% BedrockQuery.where(created_at: 24.hours.ago..Time.current)
                             .group(:model_id)
                             .sum('input_tokens + output_tokens')
                             .each do |model, tokens| %>
-  
+
               <div class="p-4 bg-gray-50 rounded-lg text-center">
                 <p class="text-sm text-gray-500">
                   <%= model.include?("haiku") ? "Claude Haiku" : "Claude Sonnet" %>
@@ -107,8 +124,86 @@
                 </p>
                 <p class="text-xs text-gray-400">tokens</p>
               </div>
-  
+
             <% end %>
+          </div>
+        </div>
+      <% end %>
+
+      <!-- S3 DOCUMENTS LIST SECTION -->
+      <% if @s3_documents_list.any? %>
+        <div class="bg-white p-6 rounded-xl shadow mb-8">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4">📁 S3 Documents</h3>
+          
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Document</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
+                  <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Modified</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                <% @s3_documents_list.each do |doc| %>
+                  <tr>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                      <div class="text-sm font-medium text-gray-900">
+                        <%= doc[:name] %>
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        <%= doc[:full_path] %>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                      <div class="text-sm text-gray-900">
+                        <%= doc[:size_mb] %> MB
+                      </div>
+                      <div class="text-xs text-gray-500">
+                        <%= number_to_human_size(doc[:size_bytes]) %>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                      <%= doc[:modified] ? doc[:modified].strftime("%Y-%m-%d %H:%M") : "N/A" %>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          
+          <div class="mt-4 text-sm text-gray-500">
+            Total: <%= @s3_documents_list.count %> documents, <%= @current_metrics[:s3_size_mb] %> MB
+          </div>
+        </div>
+      <% end %>
+
+      <!-- PERFORMANCE METRICS SECTION -->
+      <% if @performance_metrics[:total_queries] > 0 %>
+        <div class="bg-white p-6 rounded-xl shadow mb-8">
+          <h3 class="text-lg font-semibold text-gray-800 mb-4">⚡ Performance Metrics (Today)</h3>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <div class="text-sm text-gray-500">Average Latency</div>
+              <div class="text-2xl font-bold text-gray-900">
+                <%= @performance_metrics[:avg_latency] %>ms
+              </div>
+            </div>
+            
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <div class="text-sm text-gray-500">Fastest Query</div>
+              <div class="text-2xl font-bold text-green-600">
+                <%= @performance_metrics[:fastest_query] %>ms
+              </div>
+            </div>
+            
+            <div class="p-4 bg-gray-50 rounded-lg">
+              <div class="text-sm text-gray-500">Slowest Query</div>
+              <div class="text-2xl font-bold text-red-600">
+                <%= @performance_metrics[:slowest_query] %>ms
+              </div>
+            </div>
           </div>
         </div>
       <% end %>
