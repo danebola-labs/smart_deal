@@ -7,6 +7,18 @@ class RagControllerTest < ActionDispatch::IntegrationTest
     @user = users(:one)
   end
 
+  # Helper method to stub BedrockRagService.new
+  def with_mock_bedrock_rag_service(mock_service)
+    original_new = BedrockRagService.method(:new)
+    BedrockRagService.define_singleton_method(:new) { |*args| mock_service }
+    yield
+  ensure
+    # Restore original method
+    if original_new
+      BedrockRagService.define_singleton_method(:new) { |*args| original_new.call(*args) }
+    end
+  end
+
   test "requires authentication" do
     post rag_ask_url, params: { question: "test question" }, as: :json
     # Devise returns 401 for JSON requests instead of redirect
@@ -53,11 +65,7 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       }
     end
     
-    # Monkey patch BedrockRagService.new temporarily
-    original_new = BedrockRagService.method(:new)
-    BedrockRagService.define_singleton_method(:new) { |*args| mock_service }
-    
-    begin
+    with_mock_bedrock_rag_service(mock_service) do
       post rag_ask_url, params: { question: "What is S3?" }, as: :json
       assert_response :success
       
@@ -68,9 +76,6 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       assert json.key?("citations")
       assert_equal 1, json["citations"].length
       assert_equal "AWS-Certified-Solutions-Architect-v4.pdf", json["citations"].first["file_name"]
-    ensure
-      # Restore original method
-      BedrockRagService.define_singleton_method(:new, original_new)
     end
   end
 
@@ -83,11 +88,7 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       raise StandardError.new("Knowledge Base ID not configured")
     end
     
-    # Monkey patch BedrockRagService.new temporarily
-    original_new = BedrockRagService.method(:new)
-    BedrockRagService.define_singleton_method(:new) { |*args| mock_service }
-    
-    begin
+    with_mock_bedrock_rag_service(mock_service) do
       post rag_ask_url, params: { question: "test question" }, as: :json
       assert_response :unprocessable_entity
       
@@ -95,9 +96,6 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       assert_equal "error", json["status"]
       assert json["message"].present?
       assert_includes json["message"], "Error processing question"
-    ensure
-      # Restore original method
-      BedrockRagService.define_singleton_method(:new, original_new)
     end
   end
 
@@ -110,20 +108,13 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       raise StandardError.new("AccessDeniedException: User is not authorized")
     end
     
-    # Monkey patch BedrockRagService.new temporarily
-    original_new = BedrockRagService.method(:new)
-    BedrockRagService.define_singleton_method(:new) { |*args| mock_service }
-    
-    begin
+    with_mock_bedrock_rag_service(mock_service) do
       post rag_ask_url, params: { question: "test question" }, as: :json
       assert_response :unprocessable_entity
       
       json = JSON.parse(@response.body)
       assert_equal "error", json["status"]
       assert json["message"].present?
-    ensure
-      # Restore original method
-      BedrockRagService.define_singleton_method(:new, original_new)
     end
   end
 
@@ -140,11 +131,7 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       }
     end
     
-    # Monkey patch BedrockRagService.new temporarily
-    original_new = BedrockRagService.method(:new)
-    BedrockRagService.define_singleton_method(:new) { |*args| mock_service }
-    
-    begin
+    with_mock_bedrock_rag_service(mock_service) do
       post rag_ask_url, params: { question: "test question" }, as: :json
       assert_response :success
       
@@ -152,9 +139,6 @@ class RagControllerTest < ActionDispatch::IntegrationTest
       assert_equal "success", json["status"]
       assert_equal "Answer without citations", json["answer"]
       assert_equal [], json["citations"]
-    ensure
-      # Restore original method
-      BedrockRagService.define_singleton_method(:new, original_new)
     end
   end
 end
