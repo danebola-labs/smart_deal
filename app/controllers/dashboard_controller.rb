@@ -4,7 +4,7 @@ class DashboardController < ApplicationController
     @monthly_totals = monthly_totals
     @last_month_totals = last_month_totals
     @chart_data = chart_data
-    @s3_documents_list = s3_documents_list
+    @s3_documents_list = S3DocumentsService.new.list_documents
     @performance_metrics = performance_metrics
   end
 
@@ -70,69 +70,6 @@ class DashboardController < ApplicationController
     }
   end
 
-  def s3_documents_list
-    begin
-      require "aws-sdk-s3"
-      require "aws-sdk-core/static_token_provider"
-      
-      # Use same AWS configuration pattern as SimpleMetricsService
-      region = Rails.application.credentials.dig(:aws, :region) || 
-               ENV.fetch("AWS_REGION", "us-east-1")
-      
-      access_key_id = Rails.application.credentials.dig(:aws, :access_key_id) || ENV["AWS_ACCESS_KEY_ID"]
-      secret_access_key = Rails.application.credentials.dig(:aws, :secret_access_key) || ENV["AWS_SECRET_ACCESS_KEY"]
-      bearer_token = Rails.application.credentials.dig(:aws, :bedrock_bearer_token) ||
-                     Rails.application.credentials.dig(:aws, :bedrock_api_key) ||
-                     ENV["AWS_BEARER_TOKEN_BEDROCK"] ||
-                     ENV["AWS_BEDROCK_BEARER_TOKEN"]
-      
-      client_options = { region: region }
-      if bearer_token.present?
-        client_options[:token_provider] = Aws::StaticTokenProvider.new(bearer_token)
-      elsif access_key_id.present? && secret_access_key.present?
-        client_options[:access_key_id] = access_key_id
-        client_options[:secret_access_key] = secret_access_key
-      end
-      
-      s3 = Aws::S3::Client.new(client_options)
-      
-      # Get bucket name (same logic as SimpleMetricsService)
-      bucket_name = ENV['KNOWLEDGE_BASE_S3_BUCKET'] ||
-                    Rails.application.credentials.dig(:bedrock, :knowledge_base_s3_bucket) ||
-                    Rails.application.credentials.dig(:aws, :knowledge_base_s3_bucket) ||
-                    'document-chatbot-generic-tech-info'
-      
-      return [] unless bucket_name
-
-      all_objects = []
-      s3.list_objects_v2(bucket: bucket_name).each do |response|
-        all_objects.concat(response.contents || [])
-      end
-
-      # Filter only real documents (exclude metadata, hidden files, directories)
-      real_documents = all_objects.select do |obj|
-        !obj.key.start_with?('.') && 
-        !obj.key.include?('$folder$') &&
-        !obj.key.end_with?('/') &&
-        obj.size > 1024 # At least 1KB
-      end
-
-      # Return array of document info
-      real_documents.map do |obj|
-        {
-          name: obj.key.split('/').last, # Just filename
-          full_path: obj.key,
-          size_mb: (obj.size / 1.megabyte.to_f).round(2),
-          size_bytes: obj.size,
-          modified: obj.last_modified
-        }
-      end.sort_by { |doc| -doc[:size_bytes] } # Sort by size, largest first
-    rescue => e
-      Rails.logger.error("Error fetching S3 documents list: #{e.message}")
-      Rails.logger.error(e.backtrace.first(5).join("\n"))
-      []
-    end
-  end
 
   def performance_metrics
     today_queries = BedrockQuery.where(created_at: Date.current.all_day)
