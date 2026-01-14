@@ -5,26 +5,11 @@ require "aws-sdk-core/static_token_provider"
 require "json"
 
 class BedrockRagService
-  def initialize
-    region = Rails.application.credentials.dig(:aws, :region) || 
-             ENV.fetch("AWS_REGION", "us-east-1")
-    
-    # Get credentials from Rails credentials or environment variables
-    access_key_id = Rails.application.credentials.dig(:aws, :access_key_id) || ENV["AWS_ACCESS_KEY_ID"]
-    secret_access_key = Rails.application.credentials.dig(:aws, :secret_access_key) || ENV["AWS_SECRET_ACCESS_KEY"]
-    bearer_token = Rails.application.credentials.dig(:aws, :bedrock_bearer_token) ||
-                   Rails.application.credentials.dig(:aws, :bedrock_api_key) ||
-                   ENV["AWS_BEARER_TOKEN_BEDROCK"] ||
-                   ENV["AWS_BEDROCK_BEARER_TOKEN"]
-    
-    client_options = { region: region }
-    if bearer_token.present?
-      client_options[:token_provider] = Aws::StaticTokenProvider.new(bearer_token)
-    elsif access_key_id.present? && secret_access_key.present?
-      client_options[:access_key_id] = access_key_id
-      client_options[:secret_access_key] = secret_access_key
-    end
+  include AwsClientInitializer
 
+  def initialize
+    client_options = build_aws_client_options
+    region = client_options[:region]
     @client = Aws::BedrockAgentRuntime::Client.new(client_options)
     @knowledge_base_id = Rails.application.credentials.dig(:bedrock, :knowledge_base_id) ||
                          ENV["BEDROCK_KNOWLEDGE_BASE_ID"]
