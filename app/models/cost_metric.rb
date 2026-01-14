@@ -8,6 +8,12 @@ class CostMetric < ApplicationRecord
       s3_total_size: 5
     }
   
+    # Ensure metric_type always returns a symbol
+    def metric_type
+      value = read_attribute(:metric_type)
+      value.to_sym if value
+    end
+  
     validates :date, presence: true, uniqueness: { scope: :metric_type }
     validates :metric_type, presence: true
     validates :value, presence: true, numericality: true

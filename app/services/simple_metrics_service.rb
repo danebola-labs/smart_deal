@@ -28,7 +28,9 @@ class SimpleMetricsService
       metrics = collect_daily_metrics
   
       metrics.each do |metric_type, value|
-        CostMetric.find_or_initialize_by(date: @date, metric_type: metric_type).tap do |m|
+        # Ensure metric_type is a symbol for enum compatibility
+        metric_type_symbol = metric_type.to_sym
+        CostMetric.find_or_initialize_by(date: @date, metric_type: metric_type_symbol).tap do |m|
           m.value = value
           m.save!
         end
