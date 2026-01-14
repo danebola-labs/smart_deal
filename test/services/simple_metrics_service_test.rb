@@ -1,6 +1,9 @@
 require "test_helper"
 
 class SimpleMetricsServiceTest < ActiveSupport::TestCase
+  # Disable parallelization for this test class because it manipulates
+  # global constants (Aws) which can cause race conditions when running in parallel
+  parallelize(workers: 1)
   class FakeCloudWatch
     def initialize(*); end
 
