@@ -1,7 +1,7 @@
 # app/controllers/rag_controller.rb
 
 class RagController < ApplicationController
-  before_action :authenticate_user!
+  include AuthenticationConcern
 
   def ask
     question = params[:question]&.strip
