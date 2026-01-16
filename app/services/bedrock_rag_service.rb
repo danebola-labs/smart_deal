@@ -8,10 +8,13 @@ require "json"
 class BedrockRagService
   include AwsClientInitializer
 
+  MAX_CONTEXT_CHARS = 50_000
+
   def initialize
     client_options = build_aws_client_options
     region = client_options[:region]
     @client = Aws::BedrockAgentRuntime::Client.new(client_options)
+    @runtime_client = Aws::BedrockRuntime::Client.new(client_options)
     @knowledge_base_id = Rails.application.credentials.dig(:bedrock, :knowledge_base_id) ||
                          ENV["BEDROCK_KNOWLEDGE_BASE_ID"]
     
@@ -64,29 +67,31 @@ class BedrockRagService
     Rails.logger.info("Retrieval completed: #{retrieval_response.retrieval_results.length} results")
     
     # Step 2: Process retrieval results to extract chunk, similarity_score, file_name, rank
-    sources_with_scores = retrieval_response.retrieval_results.map do |result|
+    sources_with_scores = retrieval_response.retrieval_results.filter_map do |result|
+      next unless result.location&.s3_location&.uri
+      
       s3_uri = result.location.s3_location.uri
       file_name = File.basename(s3_uri)
       
       {
         file_name: file_name,
-        chunk: result.content.text,
-        similarity_score: result.score
+        chunk: result.content&.text,
+        similarity_score: result.score.to_f
       }
     end.sort_by { |source| -source[:similarity_score] }.map.with_index do |source, index|
       source[:rank] = index + 1
       source
     end
     
-    # Step 3: Build context from chunks
-    context = sources_with_scores.map { |source| source[:chunk] }.join("\n\n")
+    # Step 3: Build context from chunks (only non-nil chunks)
+    context = sources_with_scores.filter_map { |source| source[:chunk] }.join("\n\n")
+    context = context[0, MAX_CONTEXT_CHARS] if context.length > MAX_CONTEXT_CHARS
     
     # Step 4: Generate response using LLM
     model_id = model_arn.split("/").last
     prompt = build_rag_prompt(question, context)
     
-    bedrock_runtime_client = Aws::BedrockRuntime::Client.new(build_aws_client_options)
-    llm_response = bedrock_runtime_client.invoke_model({
+    llm_response = @runtime_client.invoke_model({
       model_id: model_id,
       content_type: "application/json",
       body: {
@@ -119,7 +124,7 @@ class BedrockRagService
         created_at: Time.current
       )
       Rails.logger.info("✓ Bedrock query tracked: #{input_tokens} input + #{output_tokens} output tokens")
-    rescue => e
+    rescue StandardError => e
       Rails.logger.error("Failed to track Bedrock query: #{e.message}")
       # Don't fail the request if tracking fails
     end
@@ -145,7 +150,7 @@ class BedrockRagService
       citations: formatted_citations,
       session_id: nil  # retrieve API doesn't return session_id
     }
-  rescue => e
+  rescue StandardError => e
     Rails.logger.error("Bedrock RAG error: #{e.message}")
     Rails.logger.error(e.backtrace.join("\n"))
     raise "Failed to query Knowledge Base: #{e.message}"
@@ -154,19 +159,19 @@ class BedrockRagService
   private
 
   def build_rag_prompt(question, context)
-    """
-    Contexto de documentos relevantes:
-    #{context}
-    
-    Pregunta del usuario: #{question}
-    
-    Instrucciones:
-    - Responde basándote únicamente en el contexto proporcionado
-    - Si no encuentras información relevante, indica que no tienes suficiente información
-    - Sé preciso y conciso
-    
-    Respuesta:
-    """
+    <<~PROMPT
+      Contexto de documentos relevantes:
+      #{context}
+      
+      Pregunta del usuario: #{question}
+      
+      Instrucciones:
+      - Responde basándote únicamente en el contexto proporcionado
+      - Si no encuentras información relevante, indica que no tienes suficiente información
+      - Sé preciso y conciso
+      
+      Respuesta:
+    PROMPT
   end
 
   def estimate_tokens(text)
