@@ -1,6 +1,7 @@
 Rails.application.routes.draw do
   root "home#index"
 
+  get  "home/metrics",       to: "home#metrics"
   get  "dashboard",          to: "dashboard#index"
   get  "dashboard/metrics",  to: "dashboard#metrics"
   post "dashboard/refresh",  to: "dashboard#refresh"

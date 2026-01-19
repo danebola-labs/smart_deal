@@ -58,14 +58,24 @@ export default class extends Controller {
         // Add assistant response
         this.addMessage(data.answer, "assistant")
         
+        // Update metrics after successful query
+        this.updateMetrics()
+        
         // Show citations with details if available (minimalist design)
         if (data.citations && data.citations.length > 0) {
           const citationCount = data.citations.length
           const citationText = citationCount === 1 ? 'fuente consultada' : 'fuentes consultadas'
           
-          let citationsHtml = `<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(0,0,0,0.08); width: 100%; text-align: left;">`
-          citationsHtml += `<p style="font-size: 0.75rem; color: rgba(107, 114, 128, 0.7); margin: 0 0 0.5rem 0; font-weight: 400; text-align: left;">${citationCount} ${citationText}</p>`
-          citationsHtml += `<ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; width: 100%; text-align: left;">`
+          // Escape HTML to prevent injection and ensure proper rendering
+          const escapeHtml = (text) => {
+            const div = document.createElement('div')
+            div.textContent = text
+            return div.innerHTML
+          }
+          
+          let citationsHtml = `<div style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid rgba(0,0,0,0.08); max-width: 100%; box-sizing: border-box; text-align: left; overflow: hidden;">`
+          citationsHtml += `<p style="font-size: 0.75rem; color: rgba(107, 114, 128, 0.7); margin: 0 0 0.5rem 0; font-weight: 400; text-align: left; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word; word-wrap: break-word;">${escapeHtml(citationCount + ' ' + citationText)}</p>`
+          citationsHtml += `<ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; max-width: 100%; box-sizing: border-box; text-align: left; overflow: hidden;">`
           
           data.citations.forEach((citation) => {
             const fileName = citation.file_name || 'Document'
@@ -74,14 +84,14 @@ export default class extends Controller {
               ? Math.round(citation.similarity_score * 100) 
               : 'N/A'
             
-            const titleAttr = `title="${fileName}"`
+            const titleAttr = `title="${escapeHtml(fileName)}"`
             
             // Minimalist citation: chunk on first line (truncated by CSS to fit width), score on second line
-            citationsHtml += `<li style="font-size: 0.75rem; color: rgba(107, 114, 128, 0.6); display: flex; flex-direction: column; gap: 0.125rem; line-height: 1.5; width: 100%; text-align: left; align-items: flex-start;">`
+            citationsHtml += `<li style="font-size: 0.75rem; color: rgba(107, 114, 128, 0.6); display: flex; flex-direction: column; gap: 0.125rem; line-height: 1.5; max-width: 100%; box-sizing: border-box; text-align: left; align-items: flex-start; min-width: 0; overflow: hidden;">`
             // First line: chunk text (truncated by CSS ellipsis to fit available width, with tooltip showing file_name)
-            citationsHtml += `  <span style="color: rgba(107, 114, 128, 0.6); cursor: help; transition: color 0.15s ease; display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;" ${titleAttr} onmouseover="this.style.color='rgba(107, 114, 128, 0.8)'" onmouseout="this.style.color='rgba(107, 114, 128, 0.6)'">${chunk}</span>`
+            citationsHtml += `  <span style="color: rgba(107, 114, 128, 0.6); cursor: help; transition: color 0.15s ease; display: block; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; min-width: 0;" ${titleAttr} onmouseover="this.style.color='rgba(107, 114, 128, 0.8)'" onmouseout="this.style.color='rgba(107, 114, 128, 0.6)'">${escapeHtml(chunk)}</span>`
             // Second line: score
-            citationsHtml += `  <span style="font-size: 0.6875rem; color: rgba(107, 114, 128, 0.4); text-align: left;">score: ${similarityScore}%</span>`
+            citationsHtml += `  <span style="font-size: 0.6875rem; color: rgba(107, 114, 128, 0.4); text-align: left; max-width: 100%; box-sizing: border-box; overflow-wrap: break-word;">score: ${escapeHtml(similarityScore.toString())}%</span>`
             citationsHtml += `</li>`
           })
           
@@ -188,6 +198,55 @@ export default class extends Controller {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault()
       this.sendMessage(event)
+    }
+  }
+
+  async updateMetrics() {
+    try {
+      // Only update metrics if we're on the home page
+      const isHomePage = window.location.pathname === '/' || window.location.pathname === '/home'
+      if (!isHomePage) {
+        return
+      }
+
+      const response = await fetch('/home/metrics', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]')?.content
+        },
+        credentials: 'same-origin'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch metrics')
+      }
+
+      const data = await response.json()
+      
+      // Use requestAnimationFrame to ensure DOM updates don't break layout
+      requestAnimationFrame(() => {
+        // Use data attributes for very specific selection - avoids any side effects
+        const tokensValue = document.querySelector('[data-metric-value="tokens"]')
+        const queriesValue = document.querySelector('[data-metric-value="queries"]')
+        
+        if (tokensValue) {
+          const formattedValue = new Intl.NumberFormat().format(data.today_tokens)
+          if (tokensValue.textContent !== formattedValue) {
+            tokensValue.textContent = formattedValue
+          }
+        }
+        
+        if (queriesValue) {
+          const queryValue = data.today_queries.toString()
+          if (queriesValue.textContent !== queryValue) {
+            queriesValue.textContent = queryValue
+          }
+        }
+      })
+    } catch (error) {
+      console.error('Error updating metrics:', error)
+      // Silently fail - metrics update is not critical
     }
   }
 }

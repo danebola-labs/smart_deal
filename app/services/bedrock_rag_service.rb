@@ -131,6 +131,15 @@ class BedrockRagService
         created_at: Time.current
       )
       Rails.logger.info("✓ Bedrock query tracked: #{input_tokens} input + #{output_tokens} output tokens")
+      
+      # Update metrics automatically after each query
+      begin
+        SimpleMetricsService.new.update_database_metrics_only
+        Rails.logger.info("✓ Metrics updated after query")
+      rescue StandardError => e
+        Rails.logger.error("Failed to update metrics after query: #{e.message}")
+        # Don't fail the request if metrics update fails
+      end
     rescue StandardError => e
       Rails.logger.error("Failed to track Bedrock query: #{e.message}")
       # Don't fail the request if tracking fails

@@ -9,6 +9,15 @@ class HomeController < ApplicationController
     @current_embedding_model = current_embedding_model
   end
 
+  def metrics
+    render json: {
+      today_tokens: current_metrics[:today_tokens],
+      today_queries: current_metrics[:today_queries],
+      today_cost: current_metrics[:today_cost],
+      updated_at: Time.current.iso8601
+    }
+  end
+
   private
 
   def current_llm_model

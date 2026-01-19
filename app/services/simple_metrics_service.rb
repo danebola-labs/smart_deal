@@ -26,7 +26,7 @@ class SimpleMetricsService
   
     def save_daily_metrics
       metrics = collect_daily_metrics
-  
+
       metrics.each do |metric_type, value|
         # Ensure metric_type is a symbol for enum compatibility
         metric_type_symbol = metric_type.to_sym
@@ -34,6 +34,28 @@ class SimpleMetricsService
           m.value = value
           m.save!
         end
+      end
+    end
+
+    # Update only database-based metrics (tokens, cost, queries) without calling CloudWatch
+    # This is faster and should be called after each query
+    def update_database_metrics_only
+      today = Date.current
+      
+      # Only update metrics that come from database (BedrockQuery)
+      CostMetric.find_or_initialize_by(date: today, metric_type: :daily_tokens).tap do |m|
+        m.value = calculate_daily_tokens
+        m.save!
+      end
+      
+      CostMetric.find_or_initialize_by(date: today, metric_type: :daily_cost).tap do |m|
+        m.value = calculate_daily_cost
+        m.save!
+      end
+      
+      CostMetric.find_or_initialize_by(date: today, metric_type: :daily_queries).tap do |m|
+        m.value = calculate_daily_queries
+        m.save!
       end
     end
   
