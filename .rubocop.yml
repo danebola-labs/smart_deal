@@ -1,32 +1,18 @@
-inherit_from: .rubocop_todo.yml
+inherit_gem:
+  rubocop-rails-omakase: rubocop.yml
 
-require:
-  - rubocop-rails
+inherit_from:
+  - .rubocop_todo.yml
 
 AllCops:
-  NewCops: enable
   TargetRubyVersion: 3.4
+  NewCops: enable
+  SuggestExtensions: false
   Exclude:
     - "bin/**/*"
     - "db/schema.rb"
     - "node_modules/**/*"
     - "vendor/**/*"
-  suggestedExtensions: false
-
 
 Rails:
   Enabled: true
-
-Layout/LineLength:
-  Max: 120
-
-Metrics/MethodLength:
-  Max: 20
-
-Metrics/ClassLength:
-  Max: 150
-
-Metrics/BlockLength:
-  Exclude:
-    - "spec/**/*"
-    - "test/**/*"

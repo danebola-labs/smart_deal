@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+ruby '3.4.7'
 
 source 'https://rubygems.org'
 
@@ -66,16 +67,16 @@ group :development, :test do
   gem 'bundler-audit', require: false
 
   # Static analysis for security vulnerabilities [https://brakemanscanner.org/]
-  gem 'brakeman', require: false
+  gem 'brakeman', '~> 7.1', require: false
 
   # Omakase Ruby styling [https://github.com/rails/rubocop-rails-omakase/]
   gem 'rubocop-rails-omakase', require: false
+
+  gem 'rubocop-capybara', require: false
 end
 
 group :development do
   # Use console on exceptions pages [https://github.com/rails/web-console]
-  gem 'rubocop', require: false
-  gem 'rubocop-rails', require: false
   gem 'web-console'
 end
 

@@ -336,6 +336,9 @@ GEM
     rubocop-ast (1.47.1)
       parser (>= 3.3.7.2)
       prism (~> 1.4)
+    rubocop-capybara (2.22.1)
+      lint_roller (~> 1.1)
+      rubocop (~> 1.72, >= 1.72.1)
     rubocop-performance (1.26.1)
       lint_roller (~> 1.1)
       rubocop (>= 1.75.0, < 2.0)
@@ -447,7 +450,7 @@ DEPENDENCIES
   aws-sdk-rds
   aws-sdk-s3
   bootsnap
-  brakeman
+  brakeman (~> 7.1)
   bundler-audit
   capybara
   debug
@@ -460,8 +463,7 @@ DEPENDENCIES
   propshaft
   puma (>= 5.0)
   rails (~> 8.1.1)
-  rubocop
-  rubocop-rails
+  rubocop-capybara
   rubocop-rails-omakase
   ruby-openai
   selenium-webdriver
@@ -474,6 +476,9 @@ DEPENDENCIES
   turbo-rails
   tzinfo-data
   web-console
+
+RUBY VERSION
+   ruby 3.4.7p58
 
 BUNDLED WITH
    2.7.2
