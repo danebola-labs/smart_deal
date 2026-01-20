@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class CreateBedrockQueries < ActiveRecord::Migration[8.1]
   def change
     create_table :bedrock_queries do |t|

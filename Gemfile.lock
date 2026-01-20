@@ -460,6 +460,8 @@ DEPENDENCIES
   propshaft
   puma (>= 5.0)
   rails (~> 8.1.1)
+  rubocop
+  rubocop-rails
   rubocop-rails-omakase
   ruby-openai
   selenium-webdriver

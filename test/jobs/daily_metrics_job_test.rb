@@ -1,4 +1,6 @@
-require "test_helper"
+# frozen_string_literal: true
+
+require 'test_helper'
 
 class DailyMetricsJobTest < ActiveJob::TestCase
   # Disable parallelization for this test class because it manipulates
@@ -23,16 +25,16 @@ class DailyMetricsJobTest < ActiveJob::TestCase
   # @param capture_date [Boolean] If true, captures the date argument passed to SimpleMetricsService.new
   def with_mock_simple_metrics_service(mock_service, capture_date: false)
     original_new = SimpleMetricsService.method(:new)
-    
+
     if capture_date
       SimpleMetricsService.define_singleton_method(:new) do |date = Date.current|
         mock_service.capture_date(date)
         mock_service
       end
     else
-      SimpleMetricsService.define_singleton_method(:new) { |*args| mock_service }
+      SimpleMetricsService.define_singleton_method(:new) { |*_args| mock_service }
     end
-    
+
     yield
   ensure
     # Always restore original method to prevent test pollution
@@ -45,26 +47,26 @@ class DailyMetricsJobTest < ActiveJob::TestCase
   def create_mock_service(should_raise: false, error_message: nil)
     captured_date = nil
     call_count = 0
-    
+
     mock_service = Object.new
     mock_service.define_singleton_method(:save_daily_metrics) do
       call_count += 1
-      raise StandardError.new(error_message || "Service error") if should_raise
+      raise StandardError, error_message || 'Service error' if should_raise
     end
     mock_service.define_singleton_method(:call_count) { call_count }
     mock_service.define_singleton_method(:captured_date) { captured_date }
     mock_service.define_singleton_method(:capture_date) { |date| captured_date = date }
-    
+
     mock_service
   end
 
-  test "enqueues correctly" do
+  test 'enqueues correctly' do
     assert_enqueued_with(job: DailyMetricsJob) do
       DailyMetricsJob.perform_later(@test_date)
     end
   end
 
-  test "calls SimpleMetricsService with correct date" do
+  test 'calls SimpleMetricsService with correct date' do
     mock_service = create_mock_service
     with_mock_simple_metrics_service(mock_service, capture_date: true) do
       DailyMetricsJob.perform_now(@test_date)
@@ -72,10 +74,10 @@ class DailyMetricsJobTest < ActiveJob::TestCase
     end
   end
 
-  test "calls SimpleMetricsService with Date.current when no date provided" do
+  test 'calls SimpleMetricsService with Date.current when no date provided' do
     mock_service = create_mock_service
     frozen_date = Date.new(2024, 1, 15)
-    
+
     travel_to frozen_date do
       with_mock_simple_metrics_service(mock_service, capture_date: true) do
         DailyMetricsJob.perform_now
@@ -84,20 +86,20 @@ class DailyMetricsJobTest < ActiveJob::TestCase
     end
   end
 
-  test "calls save_daily_metrics on SimpleMetricsService" do
+  test 'calls save_daily_metrics on SimpleMetricsService' do
     mock_service = create_mock_service
     with_mock_simple_metrics_service(mock_service) do
       DailyMetricsJob.perform_now(@test_date)
-      assert_equal 1, mock_service.call_count, "save_daily_metrics should be called exactly once"
+      assert_equal 1, mock_service.call_count, 'save_daily_metrics should be called exactly once'
     end
   end
 
-  test "re-raises errors from SimpleMetricsService to allow retries" do
+  test 're-raises errors from SimpleMetricsService to allow retries' do
     # The job must propagate errors to allow ActiveJob's retry mechanism to work.
     # This test verifies that errors from SimpleMetricsService are not swallowed.
-    error_message = "Failed to save metrics"
+    error_message = 'Failed to save metrics'
     mock_service = create_mock_service(should_raise: true, error_message: error_message)
-    
+
     with_mock_simple_metrics_service(mock_service) do
       assert_raises(StandardError) do
         DailyMetricsJob.perform_now(@test_date)
@@ -105,7 +107,7 @@ class DailyMetricsJobTest < ActiveJob::TestCase
     end
   end
 
-  test "is idempotent - can be executed multiple times for same date" do
+  test 'is idempotent - can be executed multiple times for same date' do
     # Create a mock service that tracks how many times save_daily_metrics is called
     mock_service = create_mock_service
 
@@ -113,40 +115,40 @@ class DailyMetricsJobTest < ActiveJob::TestCase
       # Execute job twice for the same date
       DailyMetricsJob.perform_now(@test_date)
       DailyMetricsJob.perform_now(@test_date)
-      
+
       # Both executions should succeed and call save_daily_metrics
-      assert_equal 2, mock_service.call_count, "save_daily_metrics should be called for each execution"
+      assert_equal 2, mock_service.call_count, 'save_daily_metrics should be called for each execution'
     end
   end
 
-  test "performs without crashing with real service" do
+  test 'performs without crashing with real service' do
     # This test uses the real SimpleMetricsService but with mocked AWS clients
     # to verify the job doesn't crash in a realistic scenario
     CloudWatchResponse = Struct.new(:datapoints, keyword_init: true)
     S3ListResponse = Struct.new(:contents, keyword_init: true)
     RDSDescribeResponse = Struct.new(:db_clusters, keyword_init: true)
-    
+
     fake_cloudwatch = Object.new
     fake_cloudwatch.define_singleton_method(:get_metric_statistics) { |*| CloudWatchResponse.new(datapoints: []) }
-    
+
     fake_s3 = Object.new
     fake_s3.define_singleton_method(:list_objects_v2) { |*| [S3ListResponse.new(contents: [])].to_enum }
-    
+
     fake_rds = Object.new
     fake_rds.define_singleton_method(:describe_db_clusters) { |*| RDSDescribeResponse.new(db_clusters: []) }
-    
+
     original_cloudwatch_new = Aws::CloudWatch::Client.method(:new)
     original_s3_new = Aws::S3::Client.method(:new)
     original_rds_new = Aws::RDS::Client.method(:new)
-    
-    Aws::CloudWatch::Client.define_singleton_method(:new) { |*args, **kwargs| fake_cloudwatch }
-    Aws::S3::Client.define_singleton_method(:new) { |*args, **kwargs| fake_s3 }
-    Aws::RDS::Client.define_singleton_method(:new) { |*args, **kwargs| fake_rds }
-    
+
+    Aws::CloudWatch::Client.define_singleton_method(:new) { |*_args, **_kwargs| fake_cloudwatch }
+    Aws::S3::Client.define_singleton_method(:new) { |*_args, **_kwargs| fake_s3 }
+    Aws::RDS::Client.define_singleton_method(:new) { |*_args, **_kwargs| fake_rds }
+
     begin
-      ENV["KNOWLEDGE_BASE_S3_BUCKET"] = "test-bucket"
-      ENV["AURORA_DB_CLUSTER_IDENTIFIER"] = "test-cluster"
-      
+      ENV['KNOWLEDGE_BASE_S3_BUCKET'] = 'test-bucket'
+      ENV['AURORA_DB_CLUSTER_IDENTIFIER'] = 'test-cluster'
+
       assert_nothing_raised do
         DailyMetricsJob.perform_now(@test_date)
       end
@@ -154,8 +156,8 @@ class DailyMetricsJobTest < ActiveJob::TestCase
       Aws::CloudWatch::Client.define_singleton_method(:new) { |*args, **kwargs| original_cloudwatch_new.call(*args, **kwargs) }
       Aws::S3::Client.define_singleton_method(:new) { |*args, **kwargs| original_s3_new.call(*args, **kwargs) }
       Aws::RDS::Client.define_singleton_method(:new) { |*args, **kwargs| original_rds_new.call(*args, **kwargs) }
-      ENV.delete("KNOWLEDGE_BASE_S3_BUCKET")
-      ENV.delete("AURORA_DB_CLUSTER_IDENTIFIER")
+      ENV.delete('KNOWLEDGE_BASE_S3_BUCKET')
+      ENV.delete('AURORA_DB_CLUSTER_IDENTIFIER')
     end
   end
 end

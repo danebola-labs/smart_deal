@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 class DashboardController < ApplicationController
   include MetricsHelper
 
@@ -22,11 +24,10 @@ class DashboardController < ApplicationController
 
   def refresh
     DailyMetricsJob.perform_later(Date.current)
-    redirect_to dashboard_path, notice: "Métricas actualizándose..."
+    redirect_to dashboard_path, notice: 'Métricas actualizándose...'
   end
 
   private
-
 
   def last_month_totals
     {
@@ -44,15 +45,14 @@ class DashboardController < ApplicationController
                         .pluck(:date, :value)
 
     {
-      labels: last_30.map { |d, _| d.strftime("%m/%d") },
+      labels: last_30.map { |d, _| d.strftime('%m/%d') },
       values: last_30.map { |_, v| v.to_f }
     }
   end
 
-
   def performance_metrics
     today_queries = BedrockQuery.where(created_at: Date.current.all_day)
-    
+
     {
       avg_latency: today_queries.average(:latency_ms)&.round(0) || 0,
       fastest_query: today_queries.minimum(:latency_ms) || 0,

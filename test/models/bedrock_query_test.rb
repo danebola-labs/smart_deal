@@ -1,8 +1,9 @@
-require "test_helper"
+# frozen_string_literal: true
+
+require 'test_helper'
 
 class BedrockQueryTest < ActiveSupport::TestCase
-
-  test "requires model_id and tokens" do
+  test 'requires model_id and tokens' do
     q = BedrockQuery.new
     assert_not q.valid?
     assert_includes q.errors[:model_id], "can't be blank"
@@ -10,9 +11,9 @@ class BedrockQueryTest < ActiveSupport::TestCase
     assert_includes q.errors[:output_tokens], "can't be blank"
   end
 
-  test "cost calculation works for known model" do
+  test 'cost calculation works for known model' do
     q = BedrockQuery.new(
-      model_id: "anthropic.claude-3-haiku-20240307-v1:0",
+      model_id: 'anthropic.claude-3-haiku-20240307-v1:0',
       input_tokens: 1000,
       output_tokens: 2000
     )
@@ -24,9 +25,9 @@ class BedrockQueryTest < ActiveSupport::TestCase
     assert_equal expected_cost.round(6), q.cost
   end
 
-  test "cost calculation falls back to default model" do
+  test 'cost calculation falls back to default model' do
     q = BedrockQuery.new(
-      model_id: "unknown-model",
+      model_id: 'unknown-model',
       input_tokens: 1000,
       output_tokens: 1000
     )

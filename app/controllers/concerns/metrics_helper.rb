@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # app/controllers/concerns/metrics_helper.rb
 module MetricsHelper
   extend ActiveSupport::Concern
@@ -28,4 +30,3 @@ module MetricsHelper
     }
   end
 end
-
