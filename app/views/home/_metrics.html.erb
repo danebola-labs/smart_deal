@@ -1,0 +1,16 @@
+<%# Partial para renderizar métricas diarias %>
+<%# Usado por Turbo Stream para actualizar métricas sin recargar la página %>
+<%# Usa variable local 'current_metrics' pasada desde el controller %>
+<div class="metrics-group" data-metrics-container="true">
+  <div class="metrics-grid">
+    <div class="metric-item" data-metric-type="tokens">
+      <span class="metric-label">Tokens</span>
+      <span class="metric-value" data-metric-value="tokens"><%= number_with_delimiter(current_metrics[:today_tokens]) %></span>
+    </div>
+    <div class="metric-item" data-metric-type="queries">
+      <span class="metric-label">Queries</span>
+      <span class="metric-value" data-metric-value="queries"><%= current_metrics[:today_queries] %></span>
+    </div>
+  </div>
+</div>
+

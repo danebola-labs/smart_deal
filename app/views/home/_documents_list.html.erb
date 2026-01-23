@@ -1,0 +1,36 @@
+<div class="knowledge-base-content">
+  <% if documents.any? %>
+    <div class="documents-list">
+      <% documents.each_with_index do |doc, index| %>
+        <div class="document-item-card">
+          <div class="document-item-header">
+            <span class="document-number">[<%= index + 1 %>]</span>
+            <span class="document-name-primary" title="<%= doc[:name] %>"><%= doc[:name] %></span>
+          </div>
+          <div class="document-meta-secondary">
+            <%= number_to_human_size(doc[:size_bytes]) %> • 
+            <%= format_document_date(doc[:modified]) %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    <div class="documents-summary">
+      <div class="summary-item">
+        <span class="summary-label">Total Documents:</span>
+        <span class="summary-value"><%= documents.count %></span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Total Storage:</span>
+        <span class="summary-value"><%= total_storage_mb(documents) %> MB</span>
+      </div>
+    </div>
+  <% else %>
+    <div class="document-info-placeholder">
+      <svg width="80" height="80" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="document-placeholder-icon">
+        <path d="M14 2H6C5.46957 2 4.96086 2.21071 4.58579 2.58579C4.21071 2.96086 4 3.46957 4 4V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V8L14 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M14 2V8H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      <p class="document-placeholder-text">No documents in Knowledge Base</p>
+    </div>
+  <% end %>
+</div>
