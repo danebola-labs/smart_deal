@@ -16,26 +16,39 @@ class RagController < ApplicationController
       return
     end
 
-    begin
-      rag_service = BedrockRagService.new
+    rag_service = BedrockRagService.new
+    result = rag_service.query(question)
 
-      # Query using retrieve + explicit LLM call for detailed citations
-      result = rag_service.query(question)
+    render json: {
+      answer: result[:answer],
+      citations: result[:citations],
+      session_id: result[:session_id],
+      status: 'success'
+    }
 
-      render json: {
-        answer: result[:answer],
-        citations: result[:citations],
-        session_id: result[:session_id],
-        status: 'success'
-      }
-    rescue StandardError => e
-      Rails.logger.error("RAG query error: #{e.message}")
-      Rails.logger.error(e.backtrace.join("\n"))
+  rescue BedrockRagService::MissingKnowledgeBaseError => e
+    Rails.logger.error("RAG config error: #{e.message}")
 
-      render json: {
-        message: "Error processing question: #{e.message}",
-        status: 'error'
-      }, status: :unprocessable_entity
-    end
+    render json: {
+      message: 'RAG service is not properly configured',
+      status: 'error'
+    }, status: :internal_server_error
+
+  rescue BedrockRagService::BedrockServiceError => e
+    Rails.logger.error("RAG AWS error: #{e.message}")
+
+    render json: {
+      message: 'Error querying knowledge base',
+      status: 'error'
+    }, status: :bad_gateway
+
+  rescue StandardError => e
+    Rails.logger.fatal("Unexpected RAG error: #{e.message}")
+    Rails.logger.fatal(e.backtrace.join("\n"))
+
+    render json: {
+      message: 'Unexpected error processing request',
+      status: 'error'
+    }, status: :internal_server_error
   end
 end
