@@ -7,44 +7,46 @@ require 'aws-sdk-core/static_token_provider'
 
 class SimpleMetricsService
   include AwsClientInitializer
+  include ActionView::Helpers::NumberHelper
 
-  def initialize(date = Date.current)
+  def initialize(date = Date.current, cloudwatch: nil, s3: nil, rds: nil)
     @date = date
 
-    # Use AWS client initializer concern
+    # Allow optional injection of AWS clients for testing
     client_options = build_aws_client_options
 
-    @cloudwatch = Aws::CloudWatch::Client.new(client_options)
-    @s3 = Aws::S3::Client.new(client_options)
-    @rds = Aws::RDS::Client.new(client_options)
+    @cloudwatch = cloudwatch || Aws::CloudWatch::Client.new(client_options)
+    @s3 = s3 || Aws::S3::Client.new(client_options)
+    @rds = rds || Aws::RDS::Client.new(client_options)
 
-    # Get configuration from Rails credentials or environment variables (same pattern as BedrockRagService)
-    @knowledge_base_bucket = Rails.application.credentials.dig(:bedrock, :knowledge_base_s3_bucket) ||
-                             Rails.application.credentials.dig(:aws, :knowledge_base_s3_bucket) ||
-                             ENV.fetch('KNOWLEDGE_BASE_S3_BUCKET', nil)
+    # Get configuration from Rails credentials or environment variables
+    @knowledge_base_bucket = resolve_knowledge_base_bucket
     @aurora_cluster_identifier = Rails.application.credentials.dig(:aws, :aurora_db_cluster_identifier) ||
                                  ENV.fetch('AURORA_DB_CLUSTER_IDENTIFIER', nil)
   end
 
   # Update only database-based metrics (tokens, cost, queries) without calling CloudWatch
   # This is faster and should be called after each query
-  # Converted to class method for simplicity - no instance needed for DB-only metrics
   def self.update_database_metrics_only
     today = Date.current
+    queries = BedrockQuery.where(created_at: today.all_day)
 
-    # Calculate all metrics in one pass
-    tokens = BedrockQuery.where(created_at: today.all_day).sum("input_tokens + output_tokens")
-    cost = BedrockQuery.where(created_at: today.all_day).sum { |query| query.cost }
-    queries = BedrockQuery.where(created_at: today.all_day).count
+    # Calculate tokens and count using SQL (efficient)
+    tokens = queries.sum("input_tokens + output_tokens")
+    query_count = queries.count
 
-    # Use upsert_all for atomic, efficient updates (Rails 8.1 best practice)
-    # This replaces 3 separate find_or_initialize_by + save! calls
+    # Calculate cost using pluck to avoid loading full objects (cost depends on model_id)
+    cost = queries.pluck(:model_id, :input_tokens, :output_tokens).sum do |model_id, input, output|
+      BedrockQuery.new(model_id: model_id, input_tokens: input, output_tokens: output).cost
+    end
+
+    # Use upsert_all for atomic, efficient updates
     # rubocop:disable Rails/SkipsModelValidations
     CostMetric.upsert_all(
       [
         { date: today, metric_type: :daily_tokens, value: tokens, created_at: Time.current, updated_at: Time.current },
         { date: today, metric_type: :daily_cost, value: cost, created_at: Time.current, updated_at: Time.current },
-        { date: today, metric_type: :daily_queries, value: queries, created_at: Time.current, updated_at: Time.current }
+        { date: today, metric_type: :daily_queries, value: query_count, created_at: Time.current, updated_at: Time.current }
       ],
       unique_by: [:date, :metric_type]
     )
@@ -62,12 +64,10 @@ class SimpleMetricsService
     }
   end
 
-  # Save all daily metrics to database (including CloudWatch and S3 metrics)
-  # This method collects all metrics and persists them to CostMetric table
   def save_daily_metrics
     metrics = collect_daily_metrics
 
-    # Use upsert_all for atomic, efficient updates (Rails 8.1 best practice)
+    # Use upsert_all for atomic, efficient updates
     # rubocop:disable Rails/SkipsModelValidations
     CostMetric.upsert_all(
       [
@@ -86,103 +86,62 @@ class SimpleMetricsService
   private
 
   #
-  # METRICS FROM DATABASE
+  # DATABASE METRICS
   #
 
+  # Calculate all DB metrics efficiently - reuse the same query scope
+  def calculate_daily_db_metrics
+    queries = BedrockQuery.where(created_at: @date.all_day)
+    {
+      tokens: queries.sum("input_tokens + output_tokens"),
+      # Cost calculation uses pluck to avoid loading full objects (cost depends on model_id)
+      cost: queries.pluck(:model_id, :input_tokens, :output_tokens).sum do |model_id, input, output|
+        BedrockQuery.new(model_id: model_id, input_tokens: input, output_tokens: output).cost
+      end,
+      count: queries.count
+    }
+  end
+
   def calculate_daily_tokens
-    BedrockQuery.where(created_at: @date.all_day)
-                .sum("input_tokens + output_tokens")
+    calculate_daily_db_metrics[:tokens]
   end
 
   def calculate_daily_cost
-    BedrockQuery.where(created_at: @date.all_day)
-                .sum { |query| query.cost }
+    calculate_daily_db_metrics[:cost]
   end
 
   def calculate_daily_queries
-    BedrockQuery.where(created_at: @date.all_day).count
+    calculate_daily_db_metrics[:count]
   end
 
   #
-  # METRICS FROM CLOUDWATCH
+  # CLOUDWATCH METRICS
   #
 
   def get_aurora_acu_average
     cluster_id = @aurora_cluster_identifier ||
-                  Rails.application.credentials.dig(:aws, :aurora_db_cluster_identifier) ||
-                  ENV["AURORA_DB_CLUSTER_IDENTIFIER"] ||
-                  'knowledgebasequickcreateaurora-407-auroradbcluster-bb0lvonokgdy'
+                 Rails.application.credentials.dig(:aws, :aurora_db_cluster_identifier) ||
+                 ENV["AURORA_DB_CLUSTER_IDENTIFIER"] ||
+                 (Rails.env.development? ? 'knowledgebasequickcreateaurora-407-auroradbcluster-bb0lvonokgdy' : nil)
 
     return 0.0 if cluster_id.blank?
 
     Rails.logger.info("🔍 Checking Aurora cluster: #{cluster_id}")
 
     begin
-      # 1. First check current cluster status
-      cluster = @rds.describe_db_clusters(
-        db_cluster_identifier: cluster_id
-      ).db_clusters.first
+      cluster = fetch_aurora_cluster(cluster_id)
+      return 0.0 unless cluster_available?(cluster)
 
-      Rails.logger.info("🏥 Aurora Status: #{cluster.status}")
-      Rails.logger.info("🏥 Current Capacity: #{cluster.capacity || 'paused'}")
-
-      # 2. If cluster is paused or inactive, return 0
-      if cluster.status != 'available' || !cluster.capacity || cluster.capacity == 0
-        Rails.logger.info("😴 Aurora is paused or inactive (normal for Serverless when idle)")
-        return 0.0
-      end
-
-      # 3. If cluster is active, get CloudWatch metrics
-      resp = @cloudwatch.get_metric_statistics(
-        namespace: "AWS/RDS",
-        metric_name: "ServerlessDatabaseCapacity",
-        dimensions: [
-          { name: "DBClusterIdentifier", value: cluster_id }
-        ],
-        start_time: @date.beginning_of_day.utc,
-        end_time: @date.end_of_day.utc,
-        period: 3600, # 1 hour periods
-        statistics: ["Average"]
-      )
-
-      Rails.logger.info("📊 Aurora datapoints: #{resp.datapoints.count}")
-
-      if resp.datapoints.any?
-        # Calculate average of all datapoints for the day
-        averages = resp.datapoints.map(&:average).compact
-        if averages.any?
-          avg_acu = averages.sum / averages.count
-          Rails.logger.info("✅ Aurora ACU average: #{avg_acu.round(2)}")
-          return avg_acu.round(2)
-        end
-      end
-
-      # 4. If no CloudWatch data but cluster is active, use current capacity
-      if cluster.capacity && cluster.capacity > 0
-        Rails.logger.info("📊 No CloudWatch data for #{@date}, using current capacity: #{cluster.capacity}")
-        return cluster.capacity.to_f
-      end
-
-      # 5. Fallback: return 0 if no data available
-      Rails.logger.warn("⚠️  No Aurora metrics available")
-      0.0
+      acu = calculate_acu_from_cloudwatch(cluster_id) || fallback_to_current_capacity(cluster)
+      Rails.logger.info("✅ Aurora ACU average: #{acu.round(2)}") if acu > 0
+      acu.round(2)
 
     rescue Aws::RDS::Errors::DBClusterNotFoundFault => e
       Rails.logger.error("❌ Aurora cluster not found: #{cluster_id}")
       0.0
     rescue Aws::CloudWatch::Errors::ServiceError => e
       Rails.logger.error("❌ Aurora CloudWatch error: #{e.message}")
-      # Try to use current capacity as fallback
-      begin
-        cluster = @rds.describe_db_clusters(db_cluster_identifier: cluster_id).db_clusters.first
-        if cluster.status == 'available' && cluster.capacity && cluster.capacity > 0
-          Rails.logger.info("📊 Using current capacity as fallback: #{cluster.capacity}")
-          return cluster.capacity.to_f
-        end
-      rescue
-        # Ignore fallback errors
-      end
-      0.0
+      fallback_acu_on_cloudwatch_error(cluster_id)
     rescue => e
       Rails.logger.error("Error fetching Aurora ACU metrics: #{e.message}")
       Rails.logger.error(e.backtrace.first(5).join("\n"))
@@ -190,122 +149,148 @@ class SimpleMetricsService
     end
   end
 
+  def fetch_aurora_cluster(cluster_id)
+    cluster = @rds.describe_db_clusters(db_cluster_identifier: cluster_id).db_clusters.first
+    Rails.logger.info("🏥 Aurora Status: #{cluster.status}, Capacity: #{cluster.capacity || 'paused'}")
+    cluster
+  end
+
+  def cluster_available?(cluster)
+    cluster.status == 'available' && cluster.capacity && cluster.capacity > 0
+  end
+
+  def calculate_acu_from_cloudwatch(cluster_id)
+    resp = @cloudwatch.get_metric_statistics(
+      namespace: "AWS/RDS",
+      metric_name: "ServerlessDatabaseCapacity",
+      dimensions: [
+        { name: "DBClusterIdentifier", value: cluster_id }
+      ],
+      start_time: @date.beginning_of_day.utc,
+      end_time: @date.end_of_day.utc,
+      period: 3600, # 1 hour periods
+      statistics: ["Average"]
+    )
+
+    Rails.logger.info("📊 Aurora datapoints: #{resp.datapoints.count}")
+
+    return nil unless resp.datapoints.any?
+
+    averages = resp.datapoints.map(&:average).compact
+    return nil unless averages.any?
+
+    averages.sum / averages.count
+  end
+
+  def fallback_to_current_capacity(cluster)
+    if cluster.capacity && cluster.capacity > 0
+      Rails.logger.info("📊 No CloudWatch data for #{@date}, using current capacity: #{cluster.capacity}")
+      cluster.capacity.to_f
+    else
+      Rails.logger.warn("⚠️  No Aurora metrics available")
+      0.0
+    end
+  end
+
+  def fallback_acu_on_cloudwatch_error(cluster_id)
+    begin
+      cluster = @rds.describe_db_clusters(db_cluster_identifier: cluster_id).db_clusters.first
+      if cluster.status == 'available' && cluster.capacity && cluster.capacity > 0
+        Rails.logger.info("📊 Using current capacity as fallback: #{cluster.capacity}")
+        return cluster.capacity.to_f
+      end
+    rescue
+      # Ignore fallback errors
+    end
+    0.0
+  end
+
   #
   # S3 METRICS
   #
 
-  def get_s3_document_count
-    bucket_name = find_knowledge_base_bucket
-    return 0 unless bucket_name
+  # Calculate both S3 metrics in a single iteration to avoid multiple API calls
+  def calculate_s3_metrics
+    bucket_name = @knowledge_base_bucket
+    return { count: 0, total_size: 0 } unless bucket_name
 
     Rails.logger.info("📁 Checking S3 bucket: #{bucket_name}")
 
     begin
-      # Collect all objects
-      all_objects = []
+      valid_documents = []
+      total_size = 0
+
       @s3.list_objects_v2(bucket: bucket_name).each do |response|
-        all_objects.concat(response.contents || [])
+        (response.contents || []).each do |obj|
+          if valid_document?(obj)
+            valid_documents << obj
+            total_size += obj.size
+          end
+        end
       end
 
-      # Filter only real documents (exclude metadata, hidden files, directories)
-      real_documents = all_objects.select do |obj|
-        # Exclude:
-        # - Hidden files (starting with .)
-        # - System metadata ($folder$)
-        # - Directories (ending with /)
-        # - Files smaller than 1KB (likely metadata)
-        !obj.key.start_with?('.') &&
-        obj.key.exclude?('$folder$') &&
-        !obj.key.end_with?('/') &&
-        obj.size > 1024 # At least 1KB
-      end
+      Rails.logger.info("📄 Found #{valid_documents.count} documents, #{number_to_human_size(total_size)} total")
 
-      Rails.logger.info("📄 Found #{all_objects.count} total objects, #{real_documents.count} real documents")
-
-      if Rails.env.development? && real_documents.any?
-        Rails.logger.info("   Real documents:")
-        real_documents.each do |obj|
+      # Only log individual documents in development
+      if Rails.env.development? && valid_documents.any?
+        Rails.logger.info("   Sample documents (first 5):")
+        valid_documents.first(5).each do |obj|
           Rails.logger.info("     - #{obj.key} (#{number_to_human_size(obj.size)})")
         end
       end
 
-      real_documents.count
+      { count: valid_documents.count, total_size: total_size }
+
     rescue Aws::S3::Errors::NoSuchBucket => e
       Rails.logger.error("❌ Bucket '#{bucket_name}' does not exist: #{e.message}")
-      0
+      { count: 0, total_size: 0 }
     rescue Aws::S3::Errors::AccessDenied => e
       Rails.logger.error("❌ Access denied to bucket '#{bucket_name}': #{e.message}")
-      0
+      { count: 0, total_size: 0 }
     rescue Aws::S3::Errors::ServiceError => e
       Rails.logger.error("❌ S3 Error: #{e.message}")
-      0
+      { count: 0, total_size: 0 }
     rescue => e
-      Rails.logger.error("Error fetching S3 document count: #{e.message}")
+      Rails.logger.error("Error fetching S3 metrics: #{e.message}")
       Rails.logger.error(e.backtrace.first(5).join("\n"))
-      0
+      { count: 0, total_size: 0 }
     end
+  end
+
+  def get_s3_document_count
+    calculate_s3_metrics[:count]
   end
 
   def get_s3_total_size
-    bucket_name = find_knowledge_base_bucket
-    return 0 unless bucket_name
-
-    begin
-      total_size = 0
-
-      # Use paginator to sum all object sizes efficiently
-      @s3.list_objects_v2(bucket: bucket_name).each do |response|
-        total_size += response.contents&.sum(&:size) || 0
-      end
-
-      size_gb = (total_size / 1.gigabyte.to_f).round(2)
-      Rails.logger.info("💾 Total S3 size: #{number_to_human_size(total_size)} (#{size_gb} GB)")
-      total_size
-    rescue Aws::S3::Errors::NoSuchBucket => e
-      Rails.logger.error("❌ Bucket '#{bucket_name}' does not exist: #{e.message}")
-      0
-    rescue Aws::S3::Errors::AccessDenied => e
-      Rails.logger.error("❌ Access denied to bucket '#{bucket_name}': #{e.message}")
-      0
-    rescue Aws::S3::Errors::ServiceError => e
-      Rails.logger.error("❌ S3 Size Error: #{e.message}")
-      0
-    rescue => e
-      Rails.logger.error("Error fetching S3 total size: #{e.message}")
-      Rails.logger.error(e.backtrace.first(5).join("\n"))
-      0
-    end
+    calculate_s3_metrics[:total_size]
   end
 
-  def find_knowledge_base_bucket
-    # Priority order:
-    # 1. Explicitly configured bucket name (hardcoded for now)
-    # 2. Environment variable
-    # 3. Rails credentials
-    # 4. Auto-detection
-
-    # Hardcoded bucket name (verified and working)
-    hardcoded_bucket = 'document-chatbot-generic-tech-info'
-
-    # Try environment variable
-    bucket_from_env = ENV['KNOWLEDGE_BASE_S3_BUCKET'] ||
-                      Rails.application.credentials.dig(:bedrock, :knowledge_base_s3_bucket) ||
-                      Rails.application.credentials.dig(:aws, :knowledge_base_s3_bucket)
-
-    # Use configured bucket if available, otherwise use hardcoded
-    bucket_name = (bucket_from_env.presence || hardcoded_bucket)
-
-    Rails.logger.info("🔍 Using S3 bucket: #{bucket_name}") if Rails.env.development?
-    bucket_name
+  def valid_document?(obj)
+    # Exclude hidden files, system metadata, directories, and very small files
+    !obj.key.start_with?('.') &&
+      obj.key.exclude?('$folder$') &&
+      !obj.key.end_with?('/') &&
+      obj.size > 1024 # At least 1KB
   end
 
-  def number_to_human_size(size)
-    units = ['B', 'KB', 'MB', 'GB', 'TB']
-    unit = 0
-    while size >= 1024 && unit < units.length - 1
-      size /= 1024.0
-      unit += 1
+  #
+  # CONFIGURATION
+  #
+
+  def resolve_knowledge_base_bucket
+    # Priority: ENV > Rails credentials > hardcoded (development only)
+    bucket = Rails.application.credentials.dig(:bedrock, :knowledge_base_s3_bucket) ||
+             Rails.application.credentials.dig(:aws, :knowledge_base_s3_bucket) ||
+             ENV['KNOWLEDGE_BASE_S3_BUCKET']
+
+    # Only allow hardcoded bucket in development
+    if bucket.blank? && Rails.env.development?
+      bucket = 'document-chatbot-generic-tech-info'
+      Rails.logger.info("🔍 Using hardcoded S3 bucket (development only): #{bucket}")
+    elsif bucket.blank?
+      Rails.logger.warn("⚠️  No S3 bucket configured - S3 metrics will be unavailable")
     end
-    "#{size.round(2)} #{units[unit]}"
+
+    bucket
   end
 end
