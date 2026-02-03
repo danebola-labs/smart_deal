@@ -119,6 +119,8 @@ See [BEDROCK_SETUP.md](BEDROCK_SETUP.md) for detailed setup.
 - Rails: 8.1.1
 - Database: SQLite3 (development)
 
+Run `bin/setup` to install Git hooks. The pre-commit hook runs RuboCop with autocorrect on staged Ruby files; fixes are staged automatically, and the commit is blocked if unfixable offenses remain (use `git commit --no-verify` to skip).
+
 ## Architecture
 
 For architecture, design decisions, and patterns, see [ARCHITECTURE.md](ARCHITECTURE.md).

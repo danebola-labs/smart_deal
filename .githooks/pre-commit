@@ -1,0 +1,26 @@
+#!/bin/sh
+# Pre-commit hook: run RuboCop with autocorrect on staged Ruby files.
+# Fixes that can be applied automatically are staged; commit fails if issues remain.
+
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+# Staged files that RuboCop can inspect (Ruby, Rake, Gemfile, etc.)
+FILES="$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(rb|rake|ru)$|^Gemfile$' || true)"
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+# Autocorrect only safe offenses (no -A)
+echo "$FILES" | xargs bin/rubocop -a --format simple || true
+
+# Re-stage any files that were autocorrected
+echo "$FILES" | while read -r f; do
+  [ -n "$f" ] && [ -f "$f" ] && git add "$f"
+done
+
+# Fail if there are still offenses (so user must fix or use --no-verify)
+echo "$FILES" | xargs bin/rubocop --format simple
