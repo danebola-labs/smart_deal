@@ -131,14 +131,27 @@ class BedrockRagServiceTest < ActiveSupport::TestCase
   end
 
   test 'query raises MissingKnowledgeBaseError when knowledge base ID is not configured' do
-    with_env_vars('BEDROCK_KNOWLEDGE_BASE_ID' => nil) do
-      with_mock_bedrock_client do
-        service = BedrockRagService.new
+    # Stub credentials so knowledge_base_id is nil (service reads credentials first, then ENV)
+    original_credentials = Rails.application.credentials
+    stub_credentials = Object.new
+    stub_credentials.define_singleton_method(:dig) do |*keys|
+      return nil if keys == [:bedrock, :knowledge_base_id]
+      original_credentials.dig(*keys)
+    end
+    original_credentials_method = Rails.application.method(:credentials)
+    Rails.application.define_singleton_method(:credentials) { stub_credentials }
+    begin
+      with_env_vars('BEDROCK_KNOWLEDGE_BASE_ID' => nil) do
+        with_mock_bedrock_client do
+          service = BedrockRagService.new
 
-        assert_raises(BedrockRagService::MissingKnowledgeBaseError) do
-          service.query('Test question')
+          assert_raises(BedrockRagService::MissingKnowledgeBaseError) do
+            service.query('Test question')
+          end
         end
       end
+    ensure
+      Rails.application.define_singleton_method(:credentials, original_credentials_method)
     end
   end
 
