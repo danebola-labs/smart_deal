@@ -24,4 +24,6 @@ Rails.application.routes.draw do
 
   # RAG endpoint for Knowledge Base queries
   post '/rag/ask', to: 'rag#ask'
+
+  post '/twilio/webhook', to: 'twilio#webhook'
 end

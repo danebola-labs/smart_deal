@@ -56,6 +56,9 @@ gem 'aws-sdk-cloudwatch'
 gem 'aws-sdk-rds'
 gem 'aws-sdk-s3', '>= 1.208.0'
 
+gem 'twilio-ruby'
+
+
 
 group :development, :test do
   # Environment variables management
