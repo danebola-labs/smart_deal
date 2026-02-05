@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title><%= content_for(:title) || "Smart Deal" %></title>
+    <title><%= content_for(:title) || "Danebo Rag" %></title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="application-name" content="Smart Deal">
+    <meta name="application-name" content="Danebo Rag">
     <meta name="mobile-web-app-capable" content="yes">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
@@ -14,9 +14,10 @@
     <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
     <%#= tag.link rel: "manifest", href: pwa_manifest_path(format: :json) %>
 
-    <link rel="icon" href="/icon.png" type="image/png">
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/icon.png">
+    <%= tag.link rel: "icon", href: "/favicon.ico?v=#{Time.now.to_i}", type: "image/x-icon" %>
+    <%= tag.link rel: "icon", href: "/icon.png?v=#{Time.now.to_i}", type: "image/png" %>
+    <%= tag.link rel: "shortcut icon", href: "/icon.png?v=#{Time.now.to_i}", type: "image/png" %>
+    <%= tag.link rel: "apple-touch-icon", href: "/icon.png?v=#{Time.now.to_i}" %>
 
     <%# Includes all stylesheet files in app/assets/stylesheets %>
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
@@ -29,7 +30,7 @@
     <nav class="main-nav">
       <div class="nav-container">
         <div class="nav-brand">
-          <%= link_to "Smart Deal", root_path, class: "nav-logo" %>
+          <%= link_to "Danebo Rag", root_path, class: "nav-logo" %>
         </div>
         <div class="nav-links">
           <% if user_signed_in? %>
